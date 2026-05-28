@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>StorageAgents Web</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Contract-net warehouse</p>
+          <h1>Multi-agent task allocation</h1>
+        </div>
+        <div class="metrics" aria-label="Simulation metrics">
+          <div>
+            <span class="metric-label">Orders</span>
+            <strong id="metric-orders">0</strong>
+          </div>
+          <div>
+            <span class="metric-label">Completed</span>
+            <strong id="metric-completed">0</strong>
+          </div>
+          <div>
+            <span class="metric-label">Expired</span>
+            <strong id="metric-expired">0</strong>
+          </div>
+          <div>
+            <span class="metric-label">Failed</span>
+            <strong id="metric-failed">0</strong>
+          </div>
+          <div>
+            <span class="metric-label">Avg task</span>
+            <strong id="metric-avg-task">0.0s</strong>
+          </div>
+          <div>
+            <span class="metric-label">Busy robots</span>
+            <strong id="metric-busy-robots">0/0</strong>
+          </div>
+          <div>
+            <span class="metric-label">Uptime</span>
+            <strong id="metric-uptime">0.0s</strong>
+          </div>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <section class="board-panel" aria-label="Warehouse map">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">10x10 grid</p>
+              <h2>Warehouse map</h2>
+            </div>
+            <div id="connection-state" class="connection-state">Connecting</div>
+          </div>
+          <div id="warehouse-grid" class="warehouse-grid"></div>
+          <div class="legend" aria-label="Map legend">
+            <span><i class="legend-dot shelf"></i>Shelf</span>
+            <span><i class="legend-dot packaging"></i>Packing</span>
+            <span><i class="legend-dot charger"></i>Charger</span>
+            <span><i class="legend-dot robot"></i>Robot</span>
+            <span><i class="legend-dot pickup"></i>Pickup</span>
+          </div>
+        </section>
+
+        <aside class="side-panel">
+          <section class="panel-block">
+            <div class="panel-heading compact">
+              <h2>Robots</h2>
+            </div>
+            <div id="robots-list" class="list-stack"></div>
+          </section>
+
+          <section class="panel-block">
+            <div class="panel-heading compact">
+              <h2>Active orders</h2>
+            </div>
+            <div id="orders-list" class="list-stack"></div>
+          </section>
+
+          <section class="panel-block">
+            <div class="panel-heading compact">
+              <h2>Charging</h2>
+            </div>
+            <div id="charging-list" class="charging-list"></div>
+          </section>
+        </aside>
+      </section>
+
+      <section class="event-panel" aria-label="Message bus log">
+        <div class="panel-heading compact">
+          <h2>Message bus</h2>
+        </div>
+        <div id="event-log" class="event-log"></div>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

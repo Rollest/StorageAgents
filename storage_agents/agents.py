@@ -6,6 +6,15 @@ from dataclasses import replace
 from typing import Deque, Dict, List, Optional, Tuple
 
 from .bus import MessageBus
+from .learning import (
+    CONFLICT_ACTION_SIDE_STEP,
+    CONFLICT_ACTION_WAIT,
+    ConflictLearningState,
+    ConflictQPolicy,
+    ConflictStateEncoder,
+    point_key,
+)
+from .metrics import MetricsRecorder, NullMetricsRecorder
 from .messages import (
     BID_PROPOSED,
     CELL_REQUESTED,
@@ -312,6 +321,8 @@ class RobotAgent(BaseAgent):
         position: Point,
         battery: float = 100.0,
         step_delay: float = 0.25,
+        conflict_policy: Optional[ConflictQPolicy] = None,
+        metrics: Optional[MetricsRecorder] = None,
     ) -> None:
         super().__init__(agent_id, bus)
         self.world = world
@@ -339,8 +350,18 @@ class RobotAgent(BaseAgent):
         self.yield_cell: Optional[Point] = None
         self.yield_until = 0.0
         self.side_step_threshold = 4
+        self.conflict_policy = conflict_policy or ConflictQPolicy(enabled=False)
+        self.conflict_encoder = ConflictStateEncoder()
+        self.metrics = metrics or NullMetricsRecorder()
+        self.last_conflict_state: Optional[ConflictLearningState] = None
+        self.last_conflict_action: Optional[str] = None
+        self.last_conflict_cell: Optional[Point] = None
         self.random = random.Random(sum(ord(character) for character in agent_id))
         self.intent_window = min(0.08, max(0.02, self.step_delay / 2))
+
+    async def stop(self) -> None:
+        self.conflict_policy.save()
+        await super().stop()
 
     async def run(self) -> None:
         await self.publish_status("idle")
@@ -729,13 +750,19 @@ class RobotAgent(BaseAgent):
             ):
                 return False
             if not await self._claim_next_cell(next_step, mode):
-                if await self._try_side_step(
-                    next_step,
-                    mode,
-                    task=task,
-                    after_pickup=after_pickup,
-                ):
-                    continue
+                action = self._choose_conflict_action(next_step, mode)
+                if action == CONFLICT_ACTION_SIDE_STEP:
+                    if await self._try_side_step(
+                        next_step,
+                        mode,
+                        task=task,
+                        after_pickup=after_pickup,
+                    ):
+                        self._finish_conflict_learning(2.0)
+                        continue
+                    self._finish_conflict_learning(-1.0)
+                else:
+                    self._finish_conflict_learning(-0.2)
                 await asyncio.sleep(self.step_delay + self._blocked_backoff(next_step))
                 continue
             if self.battery < self.energy_per_step:
@@ -749,6 +776,7 @@ class RobotAgent(BaseAgent):
             ROBOT_PATH_PLANNED,
             RobotPathPlanned(robot_id=self.agent_id, target=target, path=tuple(), mode=mode),
         )
+        self._finish_conflict_learning(1.0)
         return True
 
     async def _move_to_shelf_access(
@@ -801,8 +829,14 @@ class RobotAgent(BaseAgent):
             if task is not None and not self._has_safe_energy_after_step(task, next_step):
                 return False
             if not await self._claim_next_cell(next_step, mode):
-                if await self._try_side_step(next_step, mode, task=task):
-                    continue
+                action = self._choose_conflict_action(next_step, mode)
+                if action == CONFLICT_ACTION_SIDE_STEP:
+                    if await self._try_side_step(next_step, mode, task=task):
+                        self._finish_conflict_learning(2.0)
+                        continue
+                    self._finish_conflict_learning(-1.0)
+                else:
+                    self._finish_conflict_learning(-0.2)
                 await asyncio.sleep(self.step_delay + self._blocked_backoff(next_step))
                 continue
             if self.battery < self.energy_per_step:
@@ -822,6 +856,7 @@ class RobotAgent(BaseAgent):
                 mode=mode,
             ),
         )
+        self._finish_conflict_learning(1.0)
         return True
 
     async def _claim_next_cell(self, next_step: Point, mode: str) -> bool:
@@ -893,12 +928,80 @@ class RobotAgent(BaseAgent):
     def _record_move_success(self, point: Point) -> None:
         self.blocked_attempts.pop(point, None)
         self._clear_expired_yield()
+        if self.last_conflict_cell == point:
+            self._finish_conflict_learning(1.0)
 
     def _blocked_backoff(self, point: Point) -> float:
         attempts = self.blocked_attempts.get(point, 0)
         deterministic = min(self.step_delay * attempts * 0.25, self.step_delay * 2)
         jitter = self.random.uniform(0.0, self.intent_window)
         return deterministic + jitter
+
+    def _choose_conflict_action(self, blocked_cell: Point, mode: str) -> str:
+        state = self._encode_conflict_state(blocked_cell, mode)
+        side_step = self._choose_side_step(blocked_cell)
+        allowed = (
+            (CONFLICT_ACTION_WAIT, CONFLICT_ACTION_SIDE_STEP)
+            if side_step is not None and self._should_side_step(blocked_cell)
+            else (CONFLICT_ACTION_WAIT,)
+        )
+        action = self.conflict_policy.choose_action(state, allowed_actions=allowed)
+        self.last_conflict_state = state
+        self.last_conflict_action = action
+        self.last_conflict_cell = blocked_cell
+        self.metrics.record(
+            "conflict_action",
+            robot=self.agent_id,
+            cell=point_key(blocked_cell),
+            action=action,
+            state=state.key(),
+            battery=round(self.battery, 1),
+        )
+        return action
+
+    def _finish_conflict_learning(self, reward: float) -> None:
+        if self.last_conflict_state is None or self.last_conflict_action is None:
+            return
+        self.conflict_policy.update(
+            self.last_conflict_state,
+            self.last_conflict_action,
+            reward,
+        )
+        self.metrics.record(
+            "conflict_reward",
+            robot=self.agent_id,
+            cell=point_key(self.last_conflict_cell)
+            if self.last_conflict_cell is not None
+            else None,
+            action=self.last_conflict_action,
+            reward=reward,
+        )
+        self.last_conflict_state = None
+        self.last_conflict_action = None
+        self.last_conflict_cell = None
+
+    def _encode_conflict_state(
+        self,
+        blocked_cell: Point,
+        mode: str,
+    ) -> ConflictLearningState:
+        own_priority = self._movement_priority(blocked_cell, mode)
+        peer_priority = max(
+            (
+                priority
+                for _, requested, _, priority in self.peer_intents.values()
+                if requested == blocked_cell
+            ),
+            default=0.0,
+        )
+        return self.conflict_encoder.encode(
+            battery=self.battery,
+            mode=mode,
+            own_priority=own_priority,
+            peer_priority=peer_priority,
+            blocked_attempts=self.blocked_attempts.get(blocked_cell, 0),
+            side_step_available=self._choose_side_step(blocked_cell) is not None,
+        )
 
     def _commit_yield(self, robot_id: str, point: Point) -> None:
         self.yielding_to = robot_id

@@ -11,6 +11,7 @@ env/
 .ruff_cache/
 
 learning_state/
+learning_state*/
 *.log
 
 .DS_Store

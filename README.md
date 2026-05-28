@@ -93,7 +93,35 @@ Useful options:
 python3 run_demo.py --duration 45 --robots 4 --orders 20
 python3 run_demo.py --duration 8 --no-clear
 python3 run_web.py --port 8765 --robots 4 --orders 100 --max-auction-retries 3
+python3 run_web.py --learning --learning-dir learning_state
 ```
+
+## Learning mode
+
+Conflict resolution can run with a small Q-learning policy layered on top of the
+rule-based safety logic:
+
+```bash
+python3 run_demo.py --learning --duration 120 --orders 200
+python3 run_web.py --learning --learning-dir learning_state
+```
+
+The learned right-of-way policy is stored in:
+
+```text
+learning_state/conflict_policy.json
+```
+
+Conflict metrics are appended as JSONL events:
+
+```text
+learning_state/metrics.jsonl
+```
+
+The learning layer only chooses between local conflict actions such as waiting
+or taking a side-step. It does not bypass battery, reachability, or task safety
+checks, so the agents remain safe while improving their conflict behavior across
+runs.
 
 ## Tests
 

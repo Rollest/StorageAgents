@@ -123,6 +123,22 @@ or taking a side-step. It does not bypass battery, reachability, or task safety
 checks, so the agents remain safe while improving their conflict behavior across
 runs.
 
+To compare learning against the rule-based baseline, run:
+
+```bash
+python3 run_benchmark.py --seeds 1 2 3 --duration 30 --orders 100
+```
+
+The benchmark runs three modes on the same seeds:
+
+```text
+baseline       rule-based conflict handling
+learning_cold  learning enabled with an empty policy
+learning_warm  learning enabled again with the policy from learning_cold
+```
+
+Use `--json-out benchmark_results.json` for detailed per-run results.
+
 ## Tests
 
 ```bash

@@ -11,7 +11,7 @@ def plan_path(
     goal: Point,
     blocked: Optional[Iterable[Point]] = None,
 ) -> List[Point]:
-    """A* path from start to goal, excluding start from the returned path."""
+    """Строит A* путь от старта к цели без стартовой клетки."""
 
     blocked_set: Set[Point] = set(blocked or ())
     blocked_set.discard(start)
@@ -57,5 +57,5 @@ def plan_path(
 
 
 def path_energy(path: Iterable[Point], energy_per_step: float) -> float:
-    """Returns the energy required for a path."""
+    """Возвращает энергию, нужную для пути."""
     return len(list(path)) * energy_per_step

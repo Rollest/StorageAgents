@@ -6,9 +6,9 @@ from typing import Optional
 
 
 class MetricsRecorder:
-    """Writes simulation metrics as JSONL events."""
+    """Записывает метрики симуляции как JSONL-события."""
     def __init__(self, path: Optional[Path] = None, enabled: bool = False) -> None:
-        """Initializes the instance."""
+        """Инициализирует экземпляр."""
         self.path = path
         self.enabled = enabled and path is not None
         self._lock = threading.Lock()
@@ -16,7 +16,7 @@ class MetricsRecorder:
             self.path.parent.mkdir(parents=True, exist_ok=True)
 
     def record(self, event_type: str, **fields: object) -> None:
-        """Records a metrics event."""
+        """Записывает событие метрик."""
         if not self.enabled or self.path is None:
             return
         payload = {
@@ -31,7 +31,7 @@ class MetricsRecorder:
 
 
 class NullMetricsRecorder(MetricsRecorder):
-    """Drops metrics when recording is disabled."""
+    """Отбрасывает метрики, когда запись отключена."""
     def __init__(self) -> None:
-        """Initializes the instance."""
+        """Инициализирует экземпляр."""
         super().__init__(None, enabled=False)

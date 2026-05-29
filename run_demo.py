@@ -6,7 +6,7 @@ from storage_agents.simulation import build_simulation
 
 
 async def run_simulation(args: argparse.Namespace) -> None:
-    """Runs the console simulation."""
+    """Запускает консольную симуляцию."""
     simulation = build_simulation(
         order_interval=args.order_interval,
         bid_window=args.bid_window,
@@ -42,7 +42,7 @@ async def run_simulation(args: argparse.Namespace) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    """Parses CLI arguments."""
+    """Разбирает аргументы CLI."""
     parser = argparse.ArgumentParser(
         description="Run a multi-agent warehouse task allocation demo."
     )

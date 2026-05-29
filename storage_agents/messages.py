@@ -24,21 +24,21 @@ CHARGE_FINISHED = "charge.finished"
 
 @dataclass(frozen=True)
 class Point:
-    """Represents a grid coordinate."""
+    """Представляет координату сетки."""
     x: int
     y: int
 
     @property
     def label(self) -> str:
-        """Returns the display label."""
+        """Возвращает отображаемую метку."""
         return f"{chr(ord('A') + self.x)}{self.y + 1}"
 
     def distance_to(self, other: "Point") -> int:
-        """Returns Manhattan distance to another point."""
+        """Возвращает манхэттенское расстояние до другой точки."""
         return abs(self.x - other.x) + abs(self.y - other.y)
 
     def step_towards(self, target: "Point") -> "Point":
-        """Returns one grid step toward a target."""
+        """Возвращает один шаг сетки к цели."""
         if self.x < target.x:
             return Point(self.x + 1, self.y)
         if self.x > target.x:
@@ -52,7 +52,7 @@ class Point:
 
 @dataclass(frozen=True)
 class Envelope:
-    """Wraps a message sent through the bus."""
+    """Оборачивает сообщение, отправленное через шину."""
     sender: str
     topic: str
     payload: Any
@@ -62,7 +62,7 @@ class Envelope:
 
 @dataclass(frozen=True)
 class WarehouseTask:
-    """Represents a pickup and delivery task."""
+    """Представляет задачу подбора и доставки."""
     order_id: str
     pickup: Point
     dropoff: Point
@@ -71,13 +71,13 @@ class WarehouseTask:
 
     @property
     def label(self) -> str:
-        """Returns the display label."""
+        """Возвращает отображаемую метку."""
         return f"{self.order_id}: {self.pickup.label} -> {self.dropoff.label}"
 
 
 @dataclass(frozen=True)
 class Bid:
-    """Represents a robot bid for an order."""
+    """Представляет ставку робота на заказ."""
     order_id: str
     robot_id: str
     eta_seconds: float
@@ -88,21 +88,21 @@ class Bid:
 
 @dataclass(frozen=True)
 class TaskAssignment:
-    """Assigns an order to a robot."""
+    """Назначает заказ роботу."""
     task: WarehouseTask
     bid: Bid
 
 
 @dataclass(frozen=True)
 class TaskAccepted:
-    """Reports that a robot accepted an order."""
+    """Сообщает, что робот принял заказ."""
     order_id: str
     robot_id: str
 
 
 @dataclass(frozen=True)
 class TaskRejected:
-    """Reports that a robot rejected an order."""
+    """Сообщает, что робот отклонил заказ."""
     order_id: str
     robot_id: str
     reason: str
@@ -110,14 +110,14 @@ class TaskRejected:
 
 @dataclass(frozen=True)
 class TaskStarted:
-    """Reports that a robot started an order."""
+    """Сообщает, что робот начал заказ."""
     order_id: str
     robot_id: str
 
 
 @dataclass(frozen=True)
 class TaskCompleted:
-    """Reports that a robot completed an order."""
+    """Сообщает, что робот завершил заказ."""
     order_id: str
     robot_id: str
     battery_left: float
@@ -125,7 +125,7 @@ class TaskCompleted:
 
 @dataclass(frozen=True)
 class TaskFailed:
-    """Reports that an order failed."""
+    """Сообщает, что заказ провален."""
     order_id: str
     robot_id: str
     reason: str
@@ -133,7 +133,7 @@ class TaskFailed:
 
 @dataclass(frozen=True)
 class RobotStatus:
-    """Reports a robot position and mode."""
+    """Сообщает позицию и режим робота."""
     robot_id: str
     position: Point
     battery: float
@@ -142,7 +142,7 @@ class RobotStatus:
 
 @dataclass(frozen=True)
 class RobotStuck:
-    """Reports that a robot cannot continue."""
+    """Сообщает, что робот не может продолжать."""
     robot_id: str
     position: Point
     battery: float
@@ -151,7 +151,7 @@ class RobotStuck:
 
 @dataclass(frozen=True)
 class RobotPathPlanned:
-    """Reports the current planned robot path."""
+    """Сообщает текущий запланированный путь робота."""
     robot_id: str
     target: Point
     path: tuple[Point, ...]
@@ -160,7 +160,7 @@ class RobotPathPlanned:
 
 @dataclass(frozen=True)
 class CellRequest:
-    """Announces an intended cell move."""
+    """Объявляет намерение перейти в клетку."""
     robot_id: str
     current: Point
     requested: Point
@@ -170,7 +170,7 @@ class CellRequest:
 
 @dataclass(frozen=True)
 class ChargeRequest:
-    """Requests access to a charging station."""
+    """Запрашивает доступ к зарядной станции."""
     robot_id: str
     position: Point
     battery: float
@@ -179,7 +179,7 @@ class ChargeRequest:
 
 @dataclass(frozen=True)
 class ChargeGrant:
-    """Reports a charging station decision."""
+    """Сообщает решение зарядной станции."""
     robot_id: str
     accepted: bool
     station: Optional[Point]
@@ -188,6 +188,6 @@ class ChargeGrant:
 
 @dataclass(frozen=True)
 class ChargeFinished:
-    """Reports that charging has finished."""
+    """Сообщает, что зарядка завершена."""
     robot_id: str
     station: Point

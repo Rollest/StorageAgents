@@ -6,17 +6,17 @@ from .messages import Envelope
 
 
 class MessageBus:
-    """Routes messages without making scheduling decisions."""
+    """Маршрутизирует сообщения без решений о планировании."""
 
     def __init__(self, history_size: int = 80) -> None:
-        """Initializes the instance."""
+        """Инициализирует экземпляр."""
         self._subscribers: Dict[str, asyncio.Queue] = {}
         self._observers: Set[str] = set()
         self._lock: Optional[asyncio.Lock] = None
         self.history: Deque[Envelope] = deque(maxlen=history_size)
 
     async def subscribe(self, agent_id: str, observe_all: bool = False) -> asyncio.Queue:
-        """Subscribes an agent to the message bus."""
+        """Подписывает агента на шину сообщений."""
         async with self._get_lock():
             queue: asyncio.Queue = asyncio.Queue()
             self._subscribers[agent_id] = queue
@@ -25,13 +25,13 @@ class MessageBus:
             return queue
 
     async def unsubscribe(self, agent_id: str) -> None:
-        """Removes an agent subscription."""
+        """Удаляет подписку агента."""
         async with self._get_lock():
             self._subscribers.pop(agent_id, None)
             self._observers.discard(agent_id)
 
     async def publish(self, envelope: Envelope) -> None:
-        """Publishes an envelope to matching subscribers."""
+        """Публикует конверт подходящим подписчикам."""
         async with self._get_lock():
             if envelope.recipient:
                 target_ids = {envelope.recipient}
@@ -53,7 +53,7 @@ class MessageBus:
             await queue.put(envelope)
 
     def _get_lock(self) -> asyncio.Lock:
-        """Returns the lock."""
+        """Возвращает блокировку."""
         if self._lock is None:
             self._lock = asyncio.Lock()
         return self._lock

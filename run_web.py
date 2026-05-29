@@ -8,7 +8,7 @@ from storage_agents.web_state import WebStateAgent
 
 
 async def run_web(args: argparse.Namespace) -> None:
-    """Runs the web simulation server."""
+    """Запускает веб-сервер симуляции."""
     simulation = build_simulation(
         order_interval=args.order_interval,
         bid_window=args.bid_window,
@@ -53,7 +53,7 @@ async def run_web(args: argparse.Namespace) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    """Parses CLI arguments."""
+    """Разбирает аргументы CLI."""
     parser = argparse.ArgumentParser(
         description="Run the web visualization for the warehouse agents."
     )

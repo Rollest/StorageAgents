@@ -14,7 +14,7 @@ CONFLICT_ACTIONS = (CONFLICT_ACTION_WAIT, CONFLICT_ACTION_SIDE_STEP)
 
 @dataclass(frozen=True)
 class ConflictLearningState:
-    """Stores a discretized conflict state for learning."""
+    """Хранит дискретизированное состояние конфликта для обучения."""
     battery_bucket: str
     mode_bucket: str
     peer_priority_bucket: str
@@ -23,7 +23,7 @@ class ConflictLearningState:
     side_step_available: bool
 
     def key(self) -> str:
-        """Returns the stable state key."""
+        """Возвращает стабильный ключ состояния."""
         return "|".join(
             (
                 f"battery={self.battery_bucket}",
@@ -37,7 +37,7 @@ class ConflictLearningState:
 
 
 class ConflictStateEncoder:
-    """Converts conflict facts into learning states."""
+    """Преобразует данные конфликта в состояния обучения."""
     def encode(
         self,
         *,
@@ -48,7 +48,7 @@ class ConflictStateEncoder:
         blocked_attempts: int,
         side_step_available: bool,
     ) -> ConflictLearningState:
-        """Encodes conflict inputs into buckets."""
+        """Кодирует входные данные конфликта в корзины."""
         return ConflictLearningState(
             battery_bucket=self._battery_bucket(battery),
             mode_bucket=self._mode_bucket(mode),
@@ -59,7 +59,7 @@ class ConflictStateEncoder:
         )
 
     def _battery_bucket(self, battery: float) -> str:
-        """Returns the battery bucket."""
+        """Возвращает корзину заряда."""
         if battery < 25:
             return "critical"
         if battery < 45:
@@ -69,7 +69,7 @@ class ConflictStateEncoder:
         return "high"
 
     def _mode_bucket(self, mode: str) -> str:
-        """Returns the mode bucket."""
+        """Возвращает корзину режима."""
         lowered = mode.lower()
         if "charger" in lowered or "charging" in lowered:
             return "charging"
@@ -82,7 +82,7 @@ class ConflictStateEncoder:
         return "idle"
 
     def _priority_bucket(self, priority: float) -> str:
-        """Returns the priority bucket."""
+        """Возвращает корзину приоритета."""
         if priority < 2:
             return "low"
         if priority < 5:
@@ -90,7 +90,7 @@ class ConflictStateEncoder:
         return "high"
 
     def _blocked_bucket(self, attempts: int) -> str:
-        """Returns the blocked-attempts bucket."""
+        """Возвращает корзину попыток блокировки."""
         if attempts <= 1:
             return "fresh"
         if attempts <= 3:
@@ -99,7 +99,7 @@ class ConflictStateEncoder:
 
 
 class ConflictQPolicy:
-    """Stores and updates the Q-learning conflict policy."""
+    """Хранит и обновляет Q-learning политику конфликтов."""
     def __init__(
         self,
         path: Optional[Path] = None,
@@ -111,7 +111,7 @@ class ConflictQPolicy:
         seed: int = 7,
         save_every: int = 20,
     ) -> None:
-        """Initializes the instance."""
+        """Инициализирует экземпляр."""
         self.path = path
         self.enabled = enabled
         self.alpha = alpha
@@ -130,7 +130,7 @@ class ConflictQPolicy:
         *,
         allowed_actions: tuple[str, ...] = CONFLICT_ACTIONS,
     ) -> str:
-        """Chooses a conflict action."""
+        """Выбирает действие в конфликте."""
         if not self.enabled or not allowed_actions:
             return self._default_action(state, allowed_actions)
         values = self._values_for(state)
@@ -150,7 +150,7 @@ class ConflictQPolicy:
         reward: float,
         next_state: Optional[ConflictLearningState] = None,
     ) -> None:
-        """Updates the learned action value."""
+        """Обновляет выученное значение действия."""
         if not self.enabled or action not in CONFLICT_ACTIONS:
             return
         values = self._values_for(state)
@@ -165,7 +165,7 @@ class ConflictQPolicy:
             self.save()
 
     def load(self) -> None:
-        """Loads policy values from disk."""
+        """Загружает значения политики с диска."""
         if self.path is None or not self.path.exists():
             return
         payload = json.loads(self.path.read_text(encoding="utf-8"))
@@ -182,7 +182,7 @@ class ConflictQPolicy:
             }
 
     def save(self) -> None:
-        """Saves policy values to disk."""
+        """Сохраняет значения политики на диск."""
         if self.path is None:
             return
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -199,7 +199,7 @@ class ConflictQPolicy:
         )
 
     def _values_for(self, state: ConflictLearningState) -> Dict[str, float]:
-        """Returns Q-values for a state."""
+        """Возвращает Q-значения для состояния."""
         return self.q.setdefault(
             state.key(),
             {action: 0.0 for action in CONFLICT_ACTIONS},
@@ -210,7 +210,7 @@ class ConflictQPolicy:
         state: ConflictLearningState,
         allowed_actions: tuple[str, ...],
     ) -> str:
-        """Returns the rule-based fallback action."""
+        """Возвращает резервное действие на основе правил."""
         if state.side_step_available and state.blocked_bucket == "stuck":
             return CONFLICT_ACTION_SIDE_STEP
         if CONFLICT_ACTION_WAIT in allowed_actions:
@@ -219,5 +219,5 @@ class ConflictQPolicy:
 
 
 def point_key(point: Point) -> str:
-    """Returns a compact point key."""
+    """Возвращает компактный ключ точки."""
     return f"{point.x}:{point.y}"

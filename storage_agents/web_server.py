@@ -18,7 +18,7 @@ def start_web_server(
     static_dir: Path,
     clock: SimulationClock | None = None,
 ) -> Tuple[ThreadingHTTPServer, threading.Thread]:
-    """Starts the web server in a background thread."""
+    """Запускает веб-сервер в фоновом потоке."""
     handler = _make_handler(state_agent, static_dir, clock or state_agent.clock)
     server = ThreadingHTTPServer((host, port), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -31,13 +31,13 @@ def _make_handler(
     static_dir: Path,
     clock: SimulationClock,
 ):
-    """Builds the HTTP request handler class."""
+    """Создает класс обработчика HTTP-запросов."""
     static_root = static_dir.resolve()
 
     class StorageAgentsHandler(BaseHTTPRequestHandler):
-        """Serves the web UI and simulation API."""
+        """Обслуживает веб-интерфейс и API симуляции."""
         def do_GET(self) -> None:
-            """Handles HTTP GET requests."""
+            """Обрабатывает HTTP GET-запросы."""
             parsed = urlparse(self.path)
             if parsed.path == "/api/state":
                 self._send_json(state_agent.snapshot())
@@ -48,7 +48,7 @@ def _make_handler(
             self._send_static(parsed.path)
 
         def do_POST(self) -> None:
-            """Handles HTTP POST requests."""
+            """Обрабатывает HTTP POST-запросы."""
             parsed = urlparse(self.path)
             if parsed.path != "/api/time-scale":
                 self.send_error(HTTPStatus.NOT_FOUND)
@@ -63,11 +63,11 @@ def _make_handler(
             self._send_json(clock.snapshot() | {"speed": speed})
 
         def log_message(self, format: str, *args: object) -> None:
-            """Suppresses default request logging."""
+            """Отключает стандартное логирование запросов."""
             return
 
         def _send_json(self, payload: object) -> None:
-            """Sends the json."""
+            """Отправляет JSON."""
             body = json.dumps(payload).encode("utf-8")
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -77,7 +77,7 @@ def _make_handler(
             self.wfile.write(body)
 
         def _send_static(self, url_path: str) -> None:
-            """Sends the static."""
+            """Отправляет статический файл."""
             relative = unquote(url_path.lstrip("/"))
             path = (static_root / relative).resolve()
             if static_root not in path.parents and path != static_root:
@@ -86,7 +86,7 @@ def _make_handler(
             self._send_file(path)
 
         def _send_file(self, path: Path) -> None:
-            """Sends the file."""
+            """Отправляет файл."""
             if not path.exists() or not path.is_file():
                 self.send_error(HTTPStatus.NOT_FOUND)
                 return

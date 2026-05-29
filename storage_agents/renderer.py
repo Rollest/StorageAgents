@@ -35,7 +35,7 @@ from .world import WarehouseWorld
 
 
 class ConsoleRenderer:
-    """Renders the simulation in the terminal."""
+    """Отрисовывает симуляцию в терминале."""
     def __init__(
         self,
         world: WarehouseWorld,
@@ -46,7 +46,7 @@ class ConsoleRenderer:
         tick: float = 0.25,
         clear_screen: bool = True,
     ) -> None:
-        """Initializes the instance."""
+        """Инициализирует экземпляр."""
         self.world = world
         self.order_agent = order_agent
         self.robots = list(robots)
@@ -56,7 +56,7 @@ class ConsoleRenderer:
         self.clear_screen = clear_screen
 
     async def run(self, duration: float) -> None:
-        """Runs the main loop."""
+        """Запускает основной цикл."""
         start = time.monotonic()
         while time.monotonic() - start < duration:
             self.render(duration - (time.monotonic() - start))
@@ -64,7 +64,7 @@ class ConsoleRenderer:
         self.render(0.0)
 
     def render(self, seconds_left: float) -> None:
-        """Prints one terminal frame."""
+        """Печатает один кадр терминала."""
         if self.clear_screen:
             print("\033[H\033[J", end="")
         print("Multi-agent warehouse task allocation")
@@ -83,7 +83,7 @@ class ConsoleRenderer:
             print(f"  {line}")
 
     def _grid(self) -> str:
-        """Renders the warehouse grid."""
+        """Отрисовывает сетку склада."""
         grid: List[List[str]] = [
             ["." for _ in range(self.world.width)] for _ in range(self.world.height)
         ]
@@ -105,7 +105,7 @@ class ConsoleRenderer:
         return "\n".join(rows)
 
     def _orders(self) -> str:
-        """Renders order information."""
+        """Отрисовывает информацию о заказах."""
         active = [
             task
             for task in self.order_agent.orders.values()
@@ -129,7 +129,7 @@ class ConsoleRenderer:
         return "\n".join(lines)
 
     def _robots(self) -> str:
-        """Renders robot information."""
+        """Отрисовывает информацию о роботах."""
         lines = ["Robots"]
         for robot in self.robots:
             if robot.stuck:
@@ -149,7 +149,7 @@ class ConsoleRenderer:
         return "\n".join(lines)
 
     def _charging(self) -> str:
-        """Renders charging information."""
+        """Отрисовывает информацию о зарядке."""
         occupied = ", ".join(
             f"{robot}->{station.label}"
             for robot, station in sorted(self.charging_agent.occupied.items())
@@ -160,7 +160,7 @@ class ConsoleRenderer:
         return f"Charging stations: {occupied}; queue: {waiting}"
 
     def _message_log(self) -> List[str]:
-        """Returns recent bus messages."""
+        """Возвращает недавние сообщения шины."""
         visible_events = [
             event
             for event in self.bus.history
@@ -169,7 +169,7 @@ class ConsoleRenderer:
         return [self._format_event(event) for event in visible_events[-12:]]
 
     def _format_event(self, event: Envelope) -> str:
-        """Formats the event."""
+        """Форматирует событие."""
         payload = event.payload
         if event.topic == TASK_ANNOUNCED and isinstance(payload, WarehouseTask):
             return f"{event.sender} announced {payload.order_id} at {payload.pickup.label}"

@@ -52,7 +52,21 @@
               <p class="eyebrow">10x10 grid</p>
               <h2>Warehouse map</h2>
             </div>
-            <div id="connection-state" class="connection-state">Connecting</div>
+            <div class="panel-actions">
+              <label class="speed-control" for="time-scale">
+                <span>Speed</span>
+                <input
+                  id="time-scale"
+                  type="range"
+                  min="0.25"
+                  max="5"
+                  step="0.25"
+                  value="1"
+                >
+                <output id="time-scale-value" for="time-scale">1x</output>
+              </label>
+              <div id="connection-state" class="connection-state">Connecting</div>
+            </div>
           </div>
           <div id="warehouse-grid" class="warehouse-grid"></div>
           <div class="legend" aria-label="Map legend">

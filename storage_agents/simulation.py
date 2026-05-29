@@ -7,6 +7,7 @@ from .bus import MessageBus
 from .learning import ConflictQPolicy
 from .metrics import MetricsRecorder, NullMetricsRecorder
 from .messages import Point
+from .time_control import SimulationClock
 from .world import WarehouseWorld
 
 
@@ -18,6 +19,7 @@ class Simulation:
     charging_agent: ChargingStationAgent
     robots: List[RobotAgent]
     agents: List[BaseAgent]
+    clock: SimulationClock
 
 
 def build_simulation(
@@ -32,13 +34,15 @@ def build_simulation(
     learning_enabled: bool = False,
     metrics_enabled: bool = False,
     learning_dir: str = "learning_state",
+    time_scale: float = 1.0,
     extra_agents: Optional[Sequence[BaseAgent]] = None,
     extra_agent_factories: Optional[
-        Sequence[Callable[[MessageBus, WarehouseWorld], BaseAgent]]
+        Sequence[Callable[[MessageBus, WarehouseWorld, SimulationClock], BaseAgent]]
     ] = None,
 ) -> Simulation:
     world = WarehouseWorld.demo()
     bus = MessageBus()
+    clock = SimulationClock(time_scale)
     order_agent = OrderAgent(
         bus=bus,
         world=world,
@@ -47,10 +51,12 @@ def build_simulation(
         max_orders=max_orders,
         seed=seed,
         max_auction_retries=max_auction_retries,
+        clock=clock,
     )
     charging_agent = ChargingStationAgent(
         bus=bus,
         stations=list(world.charging_stations),
+        clock=clock,
     )
     starts = [Point(0, 9), Point(4, 9), Point(9, 4), Point(5, 0)]
     learning_root = Path(learning_dir)
@@ -74,12 +80,13 @@ def build_simulation(
             step_delay=step_delay,
             conflict_policy=conflict_policy,
             metrics=metrics,
+            clock=clock,
         )
         for index in range(robot_count)
     ]
     agents: List[BaseAgent] = []
     if extra_agent_factories:
-        agents.extend(factory(bus, world) for factory in extra_agent_factories)
+        agents.extend(factory(bus, world, clock) for factory in extra_agent_factories)
     if extra_agents:
         agents.extend(extra_agents)
     agents.extend([order_agent, charging_agent, *robots])
@@ -90,4 +97,5 @@ def build_simulation(
         charging_agent=charging_agent,
         robots=robots,
         agents=agents,
+        clock=clock,
     )

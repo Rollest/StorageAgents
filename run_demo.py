@@ -17,6 +17,7 @@ async def run_simulation(args: argparse.Namespace) -> None:
         learning_enabled=args.learning,
         metrics_enabled=args.metrics,
         learning_dir=args.learning_dir,
+        time_scale=args.time_scale,
     )
 
     for agent in simulation.agents:
@@ -54,6 +55,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--learning", action="store_true")
     parser.add_argument("--metrics", action="store_true")
     parser.add_argument("--learning-dir", default="learning_state")
+    parser.add_argument("--time-scale", type=float, default=1.0)
     parser.add_argument("--render-tick", type=float, default=0.25)
     parser.add_argument("--no-clear", action="store_true")
     return parser.parse_args()

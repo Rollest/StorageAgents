@@ -13,6 +13,7 @@ from storage_agents.messages import (
     TaskCompleted,
     TaskStarted,
 )
+from storage_agents.time_control import SimulationClock
 from storage_agents.web_state import WebStateAgent
 from storage_agents.world import WarehouseWorld
 
@@ -88,3 +89,9 @@ class WebStateTests(unittest.TestCase):
         order = state.snapshot()["orders"]["active"][0]
         self.assertEqual(order["status"], "in_progress")
         self.assertEqual(order["assignedRobot"], "R1")
+
+    def test_snapshot_exposes_time_scale(self) -> None:
+        clock = SimulationClock(speed=2.0)
+        state = WebStateAgent(MessageBus(), WarehouseWorld.demo(), clock=clock)
+
+        self.assertEqual(state.snapshot()["timeScale"]["speed"], 2.0)

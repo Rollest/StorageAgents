@@ -19,7 +19,10 @@ async def run_web(args: argparse.Namespace) -> None:
         learning_enabled=args.learning,
         metrics_enabled=args.metrics,
         learning_dir=args.learning_dir,
-        extra_agent_factories=[lambda bus, world: WebStateAgent(bus, world)],
+        time_scale=args.time_scale,
+        extra_agent_factories=[
+            lambda bus, world, clock: WebStateAgent(bus, world, clock=clock)
+        ],
     )
     state_agent = simulation.agents[0]
     if not isinstance(state_agent, WebStateAgent):
@@ -29,7 +32,13 @@ async def run_web(args: argparse.Namespace) -> None:
         await agent.start()
 
     static_dir = Path(__file__).parent / "web"
-    server, _ = start_web_server(args.host, args.port, state_agent, static_dir)
+    server, _ = start_web_server(
+        args.host,
+        args.port,
+        state_agent,
+        static_dir,
+        simulation.clock,
+    )
     print(f"Web visualization: http://{args.host}:{args.port}", flush=True)
     print("Press Ctrl+C to stop.", flush=True)
 
@@ -58,6 +67,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--learning", action="store_true")
     parser.add_argument("--metrics", action="store_true")
     parser.add_argument("--learning-dir", default="learning_state")
+    parser.add_argument("--time-scale", type=float, default=1.0)
     return parser.parse_args()
 
 

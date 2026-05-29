@@ -93,8 +93,12 @@ Useful options:
 python3 run_demo.py --duration 45 --robots 4 --orders 20
 python3 run_demo.py --duration 8 --no-clear
 python3 run_web.py --port 8765 --robots 4 --orders 100 --max-auction-retries 3
-python3 run_web.py --learning --learning-dir learning_state
+python3 run_web.py --learning --learning-dir learning_state --time-scale 1.5
 ```
+
+The web UI has a speed slider that changes the shared simulation clock at
+runtime. It affects order creation, auction windows, robot movement, charging,
+and conflict waiting without restarting the simulation.
 
 ## Learning mode
 
@@ -121,8 +125,9 @@ learning_state/metrics.jsonl
 
 The learning layer only chooses between local conflict actions such as waiting
 or taking a side-step. It does not bypass battery, reachability, or task safety
-checks, so the agents remain safe while improving their conflict behavior across
-runs.
+checks. Rewards include conflict resolution, repeated blocking, side-step cost,
+and low-battery risk, so the policy is pushed toward actions that clear traffic
+without wasting energy.
 
 To compare learning against the rule-based baseline, run:
 

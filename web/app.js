@@ -4,6 +4,8 @@ const ordersEl = document.querySelector("#orders-list");
 const chargingEl = document.querySelector("#charging-list");
 const eventLogEl = document.querySelector("#event-log");
 const connectionEl = document.querySelector("#connection-state");
+const timeScaleInput = document.querySelector("#time-scale");
+const timeScaleValue = document.querySelector("#time-scale-value");
 
 const metricOrders = document.querySelector("#metric-orders");
 const metricCompleted = document.querySelector("#metric-completed");
@@ -19,6 +21,8 @@ const pointKey = (point) => `${point.x}:${point.y}`;
 let gridMeta = null;
 let routeLayer = null;
 const robotTokens = new Map();
+let timeScaleRequest = null;
+let userEditingTimeScale = false;
 
 function setConnection(label, kind) {
   connectionEl.textContent = label;
@@ -44,11 +48,45 @@ function renderState(state) {
   metricAvgTask.textContent = `${state.orders.avgCompletionSeconds}s`;
   metricBusyRobots.textContent = `${state.robotStats.busy}/${state.robotStats.total}`;
   metricUptime.textContent = `${state.uptimeSeconds}s`;
+  renderTimeScale(state.timeScale);
   renderGrid(state);
   renderRobots(state.robots);
   renderOrders(state.orders.active);
   renderCharging(state.charging);
   renderEvents(state.events);
+}
+
+function renderTimeScale(timeScale) {
+  const speed = Number(timeScale?.speed || 1);
+  timeScaleValue.textContent = `${speed.toFixed(speed % 1 === 0 ? 0 : 2)}x`;
+  if (!userEditingTimeScale) {
+    timeScaleInput.value = String(speed);
+  }
+}
+
+function scheduleTimeScaleUpdate(speed) {
+  timeScaleValue.textContent = `${speed.toFixed(speed % 1 === 0 ? 0 : 2)}x`;
+  if (timeScaleRequest !== null) {
+    window.clearTimeout(timeScaleRequest);
+  }
+  timeScaleRequest = window.setTimeout(() => {
+    timeScaleRequest = null;
+    updateTimeScale(speed);
+  }, 120);
+}
+
+async function updateTimeScale(speed) {
+  try {
+    const response = await fetch("/api/time-scale", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ speed }),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    renderTimeScale(await response.json());
+  } catch (error) {
+    setConnection("Offline", "offline");
+  }
 }
 
 function renderGrid(state) {
@@ -378,6 +416,18 @@ window.addEventListener("resize", () => {
       }
     });
   });
+});
+
+timeScaleInput.addEventListener("pointerdown", () => {
+  userEditingTimeScale = true;
+});
+
+timeScaleInput.addEventListener("pointerup", () => {
+  userEditingTimeScale = false;
+});
+
+timeScaleInput.addEventListener("input", () => {
+  scheduleTimeScaleUpdate(Number(timeScaleInput.value));
 });
 
 poll();

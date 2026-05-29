@@ -42,16 +42,23 @@ from .messages import (
     TaskStarted,
     WarehouseTask,
 )
+from .time_control import SimulationClock
 from .world import WarehouseWorld
 
 
 class WebStateAgent(BaseAgent):
     """Passive observer that turns agent messages into a browser snapshot."""
 
-    def __init__(self, bus: MessageBus, world: WarehouseWorld, max_events: int = 80) -> None:
-        super().__init__("WebStateAgent", bus, observe_all=True)
+    def __init__(
+        self,
+        bus: MessageBus,
+        world: WarehouseWorld,
+        max_events: int = 80,
+        clock: Optional[SimulationClock] = None,
+    ) -> None:
+        super().__init__("WebStateAgent", bus, observe_all=True, clock=clock)
         self.world = world
-        self.started_at = time.monotonic()
+        self.started_at = self.clock.elapsed()
         self._lock = threading.RLock()
         self._orders: Dict[str, Dict[str, object]] = {}
         self._robots: Dict[str, Dict[str, object]] = {}
@@ -95,7 +102,8 @@ class WebStateAgent(BaseAgent):
                 if "charging" in str(robot.get("mode", "")).lower()
             )
             snapshot = {
-                "uptimeSeconds": round(time.monotonic() - self.started_at, 1),
+                "uptimeSeconds": round(self.clock.elapsed() - self.started_at, 1),
+                "timeScale": self.clock.snapshot(),
                 "world": {
                     "width": self.world.width,
                     "height": self.world.height,

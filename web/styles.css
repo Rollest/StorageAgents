@@ -131,6 +131,14 @@ h2 {
   margin-bottom: 10px;
 }
 
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: center;
+}
+
 .connection-state {
   min-width: 90px;
   border: 1px solid var(--line);
@@ -151,6 +159,26 @@ h2 {
   border-color: rgba(200, 76, 61, 0.35);
   background: rgba(200, 76, 61, 0.1);
   color: var(--red);
+}
+
+.speed-control {
+  display: grid;
+  grid-template-columns: auto minmax(110px, 150px) 42px;
+  gap: 8px;
+  align-items: center;
+  min-height: 34px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.speed-control input {
+  accent-color: var(--green);
+}
+
+.speed-control output {
+  color: var(--text);
+  font-weight: 800;
+  text-align: right;
 }
 
 .warehouse-grid {

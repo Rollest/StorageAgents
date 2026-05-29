@@ -52,14 +52,22 @@ from .messages import (
     WarehouseTask,
 )
 from .navigation import plan_path
+from .time_control import SimulationClock
 from .world import WarehouseWorld
 
 
 class BaseAgent:
-    def __init__(self, agent_id: str, bus: MessageBus, observe_all: bool = False) -> None:
+    def __init__(
+        self,
+        agent_id: str,
+        bus: MessageBus,
+        observe_all: bool = False,
+        clock: Optional[SimulationClock] = None,
+    ) -> None:
         self.agent_id = agent_id
         self.bus = bus
         self.observe_all = observe_all
+        self.clock = clock or SimulationClock()
         self.inbox: Optional[asyncio.Queue] = None
         self.running = False
         self._main_task: Optional[asyncio.Task] = None
@@ -97,6 +105,9 @@ class BaseAgent:
             Envelope(sender=self.agent_id, topic=topic, payload=payload)
         )
 
+    async def sleep(self, seconds: float) -> None:
+        await self.clock.sleep(seconds)
+
 
 class OrderAgent(BaseAgent):
     """Creates orders and runs a small auction for each one."""
@@ -110,8 +121,9 @@ class OrderAgent(BaseAgent):
         max_orders: int = 10,
         seed: int = 7,
         max_auction_retries: int = 3,
+        clock: Optional[SimulationClock] = None,
     ) -> None:
-        super().__init__("OrderAgent", bus)
+        super().__init__("OrderAgent", bus, clock=clock)
         self.world = world
         self.order_interval = order_interval
         self.bid_window = bid_window
@@ -193,9 +205,9 @@ class OrderAgent(BaseAgent):
             self.orders[task.order_id] = task
             self.created_at[task.order_id] = time.monotonic()
             await self.broadcast(TASK_ANNOUNCED, task)
-            await asyncio.sleep(self.bid_window)
+            await self.sleep(self.bid_window)
             await self._assign_best_bid(task.order_id)
-            await asyncio.sleep(self.order_interval)
+            await self.sleep(self.order_interval)
 
     async def _assign_best_bid(self, order_id: str) -> None:
         task = self.orders[order_id]
@@ -238,7 +250,7 @@ class OrderAgent(BaseAgent):
         await self.broadcast(TASK_EXPIRED, expired_task)
 
     async def _retry_order_after_delay(self, order_id: str) -> None:
-        await asyncio.sleep(self.order_interval)
+        await self.sleep(self.order_interval)
         if not self.running:
             return
         task = self.orders.get(order_id)
@@ -248,7 +260,7 @@ class OrderAgent(BaseAgent):
         self.orders[order_id] = retry_task
         self.pending_bids.pop(order_id, None)
         await self.broadcast(TASK_ANNOUNCED, retry_task)
-        await asyncio.sleep(self.bid_window)
+        await self.sleep(self.bid_window)
         if self.running:
             await self._assign_best_bid(order_id)
 
@@ -323,8 +335,9 @@ class RobotAgent(BaseAgent):
         step_delay: float = 0.25,
         conflict_policy: Optional[ConflictQPolicy] = None,
         metrics: Optional[MetricsRecorder] = None,
+        clock: Optional[SimulationClock] = None,
     ) -> None:
-        super().__init__(agent_id, bus)
+        super().__init__(agent_id, bus, clock=clock)
         self.world = world
         self.position = position
         self.battery = battery
@@ -356,10 +369,14 @@ class RobotAgent(BaseAgent):
         self.last_conflict_state: Optional[ConflictLearningState] = None
         self.last_conflict_action: Optional[str] = None
         self.last_conflict_cell: Optional[Point] = None
+        self.last_conflict_attempts = 0
+        self.last_conflict_battery = 100.0
         self.random = random.Random(sum(ord(character) for character in agent_id))
         self.intent_window = min(0.08, max(0.02, self.step_delay / 2))
 
     async def stop(self) -> None:
+        if self.last_conflict_state is not None:
+            self._finish_conflict_learning("interrupted")
         if self.conflict_policy.enabled:
             self.conflict_policy.save()
         await super().stop()
@@ -497,7 +514,7 @@ class RobotAgent(BaseAgent):
                 "battery reserve would be unsafe before pickup",
             )
             return
-        await asyncio.sleep(self.step_delay)
+        await self.sleep(self.step_delay)
         if not self._has_delivery_energy(task.dropoff):
             await self._abort_task_for_charge(task, "battery reserve too low after pickup")
             return
@@ -552,7 +569,7 @@ class RobotAgent(BaseAgent):
         while self.running and self.battery < self.max_battery:
             self.battery = min(self.max_battery, self.battery + self.charge_per_tick)
             await self.publish_status("charging")
-            await asyncio.sleep(self.step_delay)
+            await self.sleep(self.step_delay)
         self.charging = False
         await self.send(
             "ChargingStationAgent",
@@ -716,7 +733,7 @@ class RobotAgent(BaseAgent):
                         mode=f"waiting for route to {target.label}",
                     ),
                 )
-                await asyncio.sleep(self.step_delay)
+                await self.sleep(self.step_delay)
                 continue
             if len(path) * self.energy_per_step > self.battery:
                 static_path = self._path_to(self.position, target, avoid_peers=False)
@@ -730,7 +747,7 @@ class RobotAgent(BaseAgent):
                             mode=f"waiting for shorter route to {target.label}",
                         ),
                     )
-                    await asyncio.sleep(self.step_delay)
+                    await self.sleep(self.step_delay)
                     continue
                 await self._become_stuck(f"not enough battery to reach {target.label}")
                 return False
@@ -759,12 +776,10 @@ class RobotAgent(BaseAgent):
                         task=task,
                         after_pickup=after_pickup,
                     ):
-                        self._finish_conflict_learning(2.0)
+                        self._finish_conflict_learning("side_step_resolved")
                         continue
-                    self._finish_conflict_learning(-1.0)
-                else:
-                    self._finish_conflict_learning(-0.2)
-                await asyncio.sleep(self.step_delay + self._blocked_backoff(next_step))
+                    self._finish_conflict_learning("side_step_failed")
+                await self.sleep(self.step_delay + self._blocked_backoff(next_step))
                 continue
             if self.battery < self.energy_per_step:
                 await self._become_stuck(f"battery empty while trying to reach {target.label}")
@@ -772,12 +787,12 @@ class RobotAgent(BaseAgent):
             self.position = next_step
             self.battery = max(0.0, self.battery - self.energy_per_step)
             await self.publish_status(mode)
-            await asyncio.sleep(self.step_delay)
+            await self.sleep(self.step_delay)
         await self.broadcast(
             ROBOT_PATH_PLANNED,
             RobotPathPlanned(robot_id=self.agent_id, target=target, path=tuple(), mode=mode),
         )
-        self._finish_conflict_learning(1.0)
+        self._finish_conflict_learning("route_complete")
         return True
 
     async def _move_to_shelf_access(
@@ -810,7 +825,7 @@ class RobotAgent(BaseAgent):
                         mode=f"waiting for access to {shelf.label}",
                     ),
                 )
-                await asyncio.sleep(self.step_delay)
+                await self.sleep(self.step_delay)
                 continue
 
             if len(path) * self.energy_per_step > self.battery:
@@ -833,12 +848,10 @@ class RobotAgent(BaseAgent):
                 action = self._choose_conflict_action(next_step, mode)
                 if action == CONFLICT_ACTION_SIDE_STEP:
                     if await self._try_side_step(next_step, mode, task=task):
-                        self._finish_conflict_learning(2.0)
+                        self._finish_conflict_learning("side_step_resolved")
                         continue
-                    self._finish_conflict_learning(-1.0)
-                else:
-                    self._finish_conflict_learning(-0.2)
-                await asyncio.sleep(self.step_delay + self._blocked_backoff(next_step))
+                    self._finish_conflict_learning("side_step_failed")
+                await self.sleep(self.step_delay + self._blocked_backoff(next_step))
                 continue
             if self.battery < self.energy_per_step:
                 await self._become_stuck(f"battery empty while trying to reach {shelf.label}")
@@ -846,7 +859,7 @@ class RobotAgent(BaseAgent):
             self.position = next_step
             self.battery = max(0.0, self.battery - self.energy_per_step)
             await self.publish_status(mode)
-            await asyncio.sleep(self.step_delay)
+            await self.sleep(self.step_delay)
 
         await self.broadcast(
             ROBOT_PATH_PLANNED,
@@ -857,7 +870,7 @@ class RobotAgent(BaseAgent):
                 mode=mode,
             ),
         )
-        self._finish_conflict_learning(1.0)
+        self._finish_conflict_learning("route_complete")
         return True
 
     async def _claim_next_cell(self, next_step: Point, mode: str) -> bool:
@@ -876,7 +889,7 @@ class RobotAgent(BaseAgent):
                 priority=priority,
             ),
         )
-        await asyncio.sleep(self.intent_window)
+        await self.sleep(self.intent_window)
         self._prune_peer_intents()
         if self.world.is_service_cell(next_step):
             self._record_move_success(next_step)
@@ -930,7 +943,7 @@ class RobotAgent(BaseAgent):
         self.blocked_attempts.pop(point, None)
         self._clear_expired_yield()
         if self.last_conflict_cell == point:
-            self._finish_conflict_learning(1.0)
+            self._finish_conflict_learning("resolved")
 
     def _blocked_backoff(self, point: Point) -> float:
         attempts = self.blocked_attempts.get(point, 0)
@@ -939,6 +952,13 @@ class RobotAgent(BaseAgent):
         return deterministic + jitter
 
     def _choose_conflict_action(self, blocked_cell: Point, mode: str) -> str:
+        if self.last_conflict_state is not None:
+            outcome = (
+                "repeated"
+                if self.last_conflict_cell == blocked_cell
+                else "rerouted"
+            )
+            self._finish_conflict_learning(outcome)
         state = self._encode_conflict_state(blocked_cell, mode)
         side_step = self._choose_side_step(blocked_cell)
         allowed = (
@@ -950,6 +970,8 @@ class RobotAgent(BaseAgent):
         self.last_conflict_state = state
         self.last_conflict_action = action
         self.last_conflict_cell = blocked_cell
+        self.last_conflict_attempts = self.blocked_attempts.get(blocked_cell, 0)
+        self.last_conflict_battery = self.battery
         self.metrics.record(
             "conflict_action",
             robot=self.agent_id,
@@ -960,9 +982,10 @@ class RobotAgent(BaseAgent):
         )
         return action
 
-    def _finish_conflict_learning(self, reward: float) -> None:
+    def _finish_conflict_learning(self, outcome: str) -> None:
         if self.last_conflict_state is None or self.last_conflict_action is None:
             return
+        reward = self._conflict_reward(outcome)
         self.conflict_policy.update(
             self.last_conflict_state,
             self.last_conflict_action,
@@ -976,10 +999,40 @@ class RobotAgent(BaseAgent):
             else None,
             action=self.last_conflict_action,
             reward=reward,
+            outcome=outcome,
+            attempts=self.last_conflict_attempts,
+            battery=round(self.last_conflict_battery, 1),
         )
         self.last_conflict_state = None
         self.last_conflict_action = None
         self.last_conflict_cell = None
+        self.last_conflict_attempts = 0
+        self.last_conflict_battery = self.battery
+
+    def _conflict_reward(self, outcome: str) -> float:
+        attempts = max(self.last_conflict_attempts, 1)
+        action = self.last_conflict_action or CONFLICT_ACTION_WAIT
+        action_cost = -0.15 if action == CONFLICT_ACTION_WAIT else -0.45
+        repeated_cost = min(attempts * 0.18, 1.8)
+        battery_cost = 0.0
+        if self.last_conflict_battery < 15:
+            battery_cost = -3.0
+        elif self.last_conflict_battery < self.low_battery_threshold:
+            battery_cost = -1.2
+
+        if outcome in {"resolved", "route_complete", "side_step_resolved"}:
+            reward = 3.0 + action_cost - repeated_cost * 0.35 + battery_cost
+            if action == CONFLICT_ACTION_SIDE_STEP:
+                reward += 0.8 if attempts >= self.side_step_threshold else -0.35
+            return round(reward, 3)
+
+        if outcome == "repeated":
+            return round(-0.8 + action_cost - repeated_cost + battery_cost, 3)
+        if outcome == "side_step_failed":
+            return round(-2.2 + action_cost - repeated_cost + battery_cost, 3)
+        if outcome == "rerouted":
+            return round(-0.35 + action_cost - repeated_cost * 0.5 + battery_cost, 3)
+        return round(action_cost - repeated_cost + battery_cost, 3)
 
     def _encode_conflict_state(
         self,
@@ -1049,7 +1102,7 @@ class RobotAgent(BaseAgent):
         self.battery = max(0.0, self.battery - self.energy_per_step)
         self.blocked_attempts.pop(blocked_cell, None)
         await self.publish_status(f"yielding {mode}")
-        await asyncio.sleep(self.step_delay)
+        await self.sleep(self.step_delay)
         return True
 
     def _should_side_step(self, blocked_cell: Point) -> bool:
@@ -1236,8 +1289,9 @@ class ChargingStationAgent(BaseAgent):
         self,
         bus: MessageBus,
         stations: List[Point],
+        clock: Optional[SimulationClock] = None,
     ) -> None:
-        super().__init__("ChargingStationAgent", bus)
+        super().__init__("ChargingStationAgent", bus, clock=clock)
         self.stations = stations
         self.occupied: Dict[str, Point] = {}
         self.waiting: Deque[ChargeRequest] = deque()

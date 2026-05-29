@@ -12,6 +12,7 @@ from storage_agents.benchmark import (
 
 
 async def main() -> None:
+    """Runs the command-line entry point."""
     args = parse_benchmark_args()
     config = config_from_args(args)
     results = await run_benchmark(config)

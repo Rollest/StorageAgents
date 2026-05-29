@@ -57,6 +57,7 @@ from .world import WarehouseWorld
 
 
 class BaseAgent:
+    """Base class for asynchronous warehouse agents."""
     def __init__(
         self,
         agent_id: str,
@@ -64,6 +65,7 @@ class BaseAgent:
         observe_all: bool = False,
         clock: Optional[SimulationClock] = None,
     ) -> None:
+        """Initializes the instance."""
         self.agent_id = agent_id
         self.bus = bus
         self.observe_all = observe_all
@@ -74,11 +76,13 @@ class BaseAgent:
         self._children: List[asyncio.Task] = []
 
     async def start(self) -> None:
+        """Starts the agent task."""
         self.inbox = await self.bus.subscribe(self.agent_id, observe_all=self.observe_all)
         self.running = True
         self._main_task = asyncio.create_task(self.run(), name=self.agent_id)
 
     async def stop(self) -> None:
+        """Stops the agent and its child tasks."""
         self.running = False
         tasks = [task for task in [self._main_task, *self._children] if task]
         for task in tasks:
@@ -88,9 +92,11 @@ class BaseAgent:
         await self.bus.unsubscribe(self.agent_id)
 
     async def run(self) -> None:
+        """Runs the main loop."""
         raise NotImplementedError
 
     async def send(self, recipient: str, topic: str, payload: object) -> None:
+        """Sends a message to one recipient."""
         await self.bus.publish(
             Envelope(
                 sender=self.agent_id,
@@ -101,11 +107,13 @@ class BaseAgent:
         )
 
     async def broadcast(self, topic: str, payload: object) -> None:
+        """Broadcasts a message to all subscribers."""
         await self.bus.publish(
             Envelope(sender=self.agent_id, topic=topic, payload=payload)
         )
 
     async def sleep(self, seconds: float) -> None:
+        """Sleeps in simulation time."""
         await self.clock.sleep(seconds)
 
 
@@ -123,6 +131,7 @@ class OrderAgent(BaseAgent):
         max_auction_retries: int = 3,
         clock: Optional[SimulationClock] = None,
     ) -> None:
+        """Initializes the instance."""
         super().__init__("OrderAgent", bus, clock=clock)
         self.world = world
         self.order_interval = order_interval
@@ -142,6 +151,7 @@ class OrderAgent(BaseAgent):
         self.reassigned_count = 0
 
     async def run(self) -> None:
+        """Runs the main loop."""
         producer = asyncio.create_task(self._produce_orders())
         self._children.append(producer)
 
@@ -188,11 +198,13 @@ class OrderAgent(BaseAgent):
 
     @property
     def average_delivery_seconds(self) -> float:
+        """Returns the average task duration."""
         if not self.delivery_durations:
             return 0.0
         return sum(self.delivery_durations) / len(self.delivery_durations)
 
     async def _produce_orders(self) -> None:
+        """Produces orders until the configured limit is reached."""
         for number in range(1, self.max_orders + 1):
             if not self.running:
                 break
@@ -210,6 +222,7 @@ class OrderAgent(BaseAgent):
             await self.sleep(self.order_interval)
 
     async def _assign_best_bid(self, order_id: str) -> None:
+        """Assigns an order to the best available bid."""
         task = self.orders[order_id]
         bids = self.pending_bids.get(order_id, [])
         if not bids:
@@ -232,6 +245,7 @@ class OrderAgent(BaseAgent):
         )
 
     async def _wait_or_expire_order(self, order_id: str, task: WarehouseTask) -> None:
+        """Retries an order or marks it expired."""
         self.auction_attempts[order_id] += 1
         if self.auction_attempts[order_id] <= self.max_auction_retries:
             waiting_task = replace(task, status="waiting", assigned_robot=None)
@@ -250,6 +264,7 @@ class OrderAgent(BaseAgent):
         await self.broadcast(TASK_EXPIRED, expired_task)
 
     async def _retry_order_after_delay(self, order_id: str) -> None:
+        """Reopens an order after a retry delay."""
         await self.sleep(self.order_interval)
         if not self.running:
             return
@@ -265,6 +280,7 @@ class OrderAgent(BaseAgent):
             await self._assign_best_bid(order_id)
 
     async def _handle_task_accepted(self, report: object) -> None:
+        """Handles the task accepted message."""
         if not isinstance(report, TaskAccepted):
             return
         task = self.orders.get(report.order_id)
@@ -276,6 +292,7 @@ class OrderAgent(BaseAgent):
             self.orders[report.order_id] = replace(task, status="accepted")
 
     async def _handle_task_rejected(self, report: object) -> None:
+        """Handles the task rejected message."""
         if not isinstance(report, TaskRejected):
             return
         task = self.orders.get(report.order_id)
@@ -293,6 +310,7 @@ class OrderAgent(BaseAgent):
         await self._assign_best_bid(report.order_id)
 
     async def _handle_task_started(self, report: object) -> None:
+        """Handles the task started message."""
         if not isinstance(report, TaskStarted):
             return
         task = self.orders.get(report.order_id)
@@ -305,6 +323,7 @@ class OrderAgent(BaseAgent):
             self.started_at[report.order_id] = time.monotonic()
 
     async def _handle_robot_stuck(self, report: RobotStuck) -> None:
+        """Handles the robot stuck message."""
         if not isinstance(report, RobotStuck):
             return
         for task in self.orders.values():
@@ -325,6 +344,7 @@ class OrderAgent(BaseAgent):
 
 
 class RobotAgent(BaseAgent):
+    """Moves through the warehouse and executes assigned orders."""
     def __init__(
         self,
         agent_id: str,
@@ -337,6 +357,7 @@ class RobotAgent(BaseAgent):
         metrics: Optional[MetricsRecorder] = None,
         clock: Optional[SimulationClock] = None,
     ) -> None:
+        """Initializes the instance."""
         super().__init__(agent_id, bus, clock=clock)
         self.world = world
         self.position = position
@@ -375,6 +396,7 @@ class RobotAgent(BaseAgent):
         self.intent_window = min(0.08, max(0.02, self.step_delay / 2))
 
     async def stop(self) -> None:
+        """Stops the agent and its child tasks."""
         if self.last_conflict_state is not None:
             self._finish_conflict_learning("interrupted")
         if self.conflict_policy.enabled:
@@ -382,6 +404,7 @@ class RobotAgent(BaseAgent):
         await super().stop()
 
     async def run(self) -> None:
+        """Runs the main loop."""
         await self.publish_status("idle")
         if self.needs_charge_for_workload():
             await self.request_charge("initial reserve is below safe workload estimate")
@@ -402,6 +425,7 @@ class RobotAgent(BaseAgent):
                 self._handle_peer_stuck(message.payload)
 
     async def _handle_task_announcement(self, task: WarehouseTask) -> None:
+        """Handles the task announcement message."""
         bid = self.make_bid_for(task)
         if bid is None:
             if self.needs_charge_for_workload() and not self.waiting_for_charge:
@@ -410,6 +434,7 @@ class RobotAgent(BaseAgent):
         await self.send("OrderAgent", BID_PROPOSED, bid)
 
     async def _handle_task_assignment(self, assignment: TaskAssignment) -> None:
+        """Handles the task assignment message."""
         if not isinstance(assignment, TaskAssignment):
             return
         if assignment.task.assigned_robot not in {None, self.agent_id}:
@@ -441,6 +466,7 @@ class RobotAgent(BaseAgent):
         assignment: TaskAssignment,
         reason: str,
     ) -> None:
+        """Rejects an assignment with a reason."""
         await self.send(
             "OrderAgent",
             TASK_REJECTED,
@@ -452,6 +478,7 @@ class RobotAgent(BaseAgent):
         )
 
     async def _handle_charge_grant(self, grant: ChargeGrant) -> None:
+        """Handles the charge grant message."""
         if grant.robot_id != self.agent_id:
             return
         if not grant.accepted:
@@ -469,6 +496,7 @@ class RobotAgent(BaseAgent):
         self._children.append(task)
 
     def make_bid_for(self, task: WarehouseTask) -> Optional[Bid]:
+        """Builds a bid when the robot can safely take the task."""
         if self.busy or self.charging or self.waiting_for_charge or self.stuck:
             return None
 
@@ -500,6 +528,7 @@ class RobotAgent(BaseAgent):
         )
 
     async def _execute_task(self, task: WarehouseTask) -> None:
+        """Executes pickup and delivery for a task."""
         await self.broadcast(
             TASK_STARTED,
             TaskStarted(order_id=task.order_id, robot_id=self.agent_id),
@@ -545,6 +574,7 @@ class RobotAgent(BaseAgent):
             await self.request_charge("not enough reserve for another safe task")
 
     async def request_charge(self, reason: str) -> None:
+        """Requests a charger when the robot needs energy."""
         if self.busy or self.charging or self.waiting_for_charge or self.stuck:
             return
         if not any(self.can_reach(station) for station in self.world.charging_stations):
@@ -563,6 +593,7 @@ class RobotAgent(BaseAgent):
         )
 
     async def _go_charge(self, station: Point) -> None:
+        """Moves to a charger and refills the battery."""
         if not await self._move_to(station, mode="to charger"):
             self.charging = False
             return
@@ -579,6 +610,7 @@ class RobotAgent(BaseAgent):
         await self.publish_status("idle")
 
     def can_reach(self, target: Point) -> bool:
+        """Checks whether the robot has enough energy to reach a target."""
         path = self._path_to(self.position, target, avoid_peers=False)
         if path is None:
             return False
@@ -586,9 +618,11 @@ class RobotAgent(BaseAgent):
 
     @property
     def reserve_energy(self) -> float:
+        """Returns the reserved battery energy."""
         return self.reserve_steps * self.energy_per_step
 
     def _energy_to_nearest_charger(self, start: Point) -> float:
+        """Returns the to nearest charger."""
         paths = [
             path
             for station in self.world.charging_stations
@@ -605,6 +639,7 @@ class RobotAgent(BaseAgent):
         start: Optional[Point] = None,
         include_traffic_margin: bool = True,
     ) -> Optional[float]:
+        """Returns the needed for task."""
         route = self._task_route(task, start=start)
         if route is None:
             return None
@@ -626,6 +661,7 @@ class RobotAgent(BaseAgent):
         next_step: Point,
         after_pickup: bool = False,
     ) -> bool:
+        """Checks whether safe energy after step."""
         battery_after_step = self.battery - self.energy_per_step
         if after_pickup:
             needed = self._energy_needed_for_delivery_from(task.dropoff, next_step)
@@ -641,6 +677,7 @@ class RobotAgent(BaseAgent):
         start: Point,
         include_traffic_margin: bool = True,
     ) -> Optional[float]:
+        """Returns the needed for delivery from."""
         to_dropoff = self._path_to(start, dropoff, avoid_peers=False)
         if to_dropoff is None:
             return None
@@ -656,6 +693,7 @@ class RobotAgent(BaseAgent):
         )
 
     async def _abort_task_for_charge(self, task: WarehouseTask, reason: str) -> None:
+        """Aborts the task and requests charging."""
         self.busy = False
         self.current_task_id = None
         await self.send(
@@ -671,10 +709,12 @@ class RobotAgent(BaseAgent):
         await self.request_charge(reason)
 
     def minimum_safe_task_energy(self) -> Optional[float]:
+        """Returns the smallest safe task energy estimate."""
         energies = self._workload_energy_estimates()
         return min(energies) if energies else None
 
     def safe_workload_coverage(self) -> float:
+        """Returns the share of tasks safe for current battery."""
         energies = self._workload_energy_estimates()
         if not energies:
             return 0.0
@@ -682,6 +722,7 @@ class RobotAgent(BaseAgent):
         return safe_count / len(energies)
 
     def needs_charge_for_workload(self) -> bool:
+        """Checks whether current battery is too low for work."""
         if self.busy or self.charging or self.waiting_for_charge or self.stuck:
             return False
         if not any(self.can_reach(station) for station in self.world.charging_stations):
@@ -695,6 +736,7 @@ class RobotAgent(BaseAgent):
         return self.safe_workload_coverage() < self.minimum_workload_coverage
 
     def _workload_energy_estimates(self) -> List[float]:
+        """Returns safe energy estimates for all shelves."""
         return [
             energy
             for shelf in self.world.shelves
@@ -717,6 +759,7 @@ class RobotAgent(BaseAgent):
         task: Optional[WarehouseTask] = None,
         after_pickup: bool = False,
     ) -> bool:
+        """Moves the robot toward the to."""
         while self.running and self.position != target:
             path = self._path_to(self.position, target)
             if not path:
@@ -801,6 +844,7 @@ class RobotAgent(BaseAgent):
         mode: str,
         task: Optional[WarehouseTask] = None,
     ) -> bool:
+        """Moves the robot toward the to shelf access."""
         access_points = self.world.access_points_for(shelf)
         if not access_points:
             await self._become_stuck(f"no access point for shelf {shelf.label}")
@@ -874,6 +918,7 @@ class RobotAgent(BaseAgent):
         return True
 
     async def _claim_next_cell(self, next_step: Point, mode: str) -> bool:
+        """Claims the next cell if priority rules allow it."""
         if self._is_yielding_for(next_step):
             self._record_move_blocked(next_step, self.yielding_to)
             return False
@@ -913,6 +958,7 @@ class RobotAgent(BaseAgent):
         return True
 
     def _movement_priority(self, next_step: Point, mode: str) -> float:
+        """Returns movement priority for a requested cell."""
         mode_lower = mode.lower()
         pressure = min(self.blocked_attempts[next_step], 10) * 0.5
         low_battery_bonus = max(0.0, self.low_battery_threshold - self.battery) / 10.0
@@ -935,23 +981,27 @@ class RobotAgent(BaseAgent):
         point: Point,
         robot_id: Optional[str] = None,
     ) -> None:
+        """Records a blocked movement attempt."""
         self.blocked_attempts[point] += 1
         if robot_id is not None:
             self.conflict_counts[(robot_id, point)] += 1
 
     def _record_move_success(self, point: Point) -> None:
+        """Records a successful movement attempt."""
         self.blocked_attempts.pop(point, None)
         self._clear_expired_yield()
         if self.last_conflict_cell == point:
             self._finish_conflict_learning("resolved")
 
     def _blocked_backoff(self, point: Point) -> float:
+        """Returns extra wait time after repeated blocking."""
         attempts = self.blocked_attempts.get(point, 0)
         deterministic = min(self.step_delay * attempts * 0.25, self.step_delay * 2)
         jitter = self.random.uniform(0.0, self.intent_window)
         return deterministic + jitter
 
     def _choose_conflict_action(self, blocked_cell: Point, mode: str) -> str:
+        """Chooses the conflict action."""
         if self.last_conflict_state is not None:
             outcome = (
                 "repeated"
@@ -983,6 +1033,7 @@ class RobotAgent(BaseAgent):
         return action
 
     def _finish_conflict_learning(self, outcome: str) -> None:
+        """Applies the final reward for a conflict action."""
         if self.last_conflict_state is None or self.last_conflict_action is None:
             return
         reward = self._conflict_reward(outcome)
@@ -1010,6 +1061,7 @@ class RobotAgent(BaseAgent):
         self.last_conflict_battery = self.battery
 
     def _conflict_reward(self, outcome: str) -> float:
+        """Calculates reward for a conflict outcome."""
         attempts = max(self.last_conflict_attempts, 1)
         action = self.last_conflict_action or CONFLICT_ACTION_WAIT
         action_cost = -0.15 if action == CONFLICT_ACTION_WAIT else -0.45
@@ -1039,6 +1091,7 @@ class RobotAgent(BaseAgent):
         blocked_cell: Point,
         mode: str,
     ) -> ConflictLearningState:
+        """Encodes the current conflict for learning."""
         own_priority = self._movement_priority(blocked_cell, mode)
         peer_priority = max(
             (
@@ -1058,19 +1111,23 @@ class RobotAgent(BaseAgent):
         )
 
     def _commit_yield(self, robot_id: str, point: Point) -> None:
+        """Commits to yielding to another robot."""
         self.yielding_to = robot_id
         self.yield_cell = point
         self.yield_until = time.monotonic() + max(self.step_delay * 5, 0.45)
 
     def _is_yielding_for(self, point: Point) -> bool:
+        """Checks whether this cell is currently yielded."""
         self._clear_expired_yield()
         return self.yield_cell == point and self.yielding_to is not None
 
     def _is_yielding_to(self, robot_id: str, point: Point) -> bool:
+        """Checks whether the robot is yielding to a peer."""
         self._clear_expired_yield()
         return self.yielding_to == robot_id and self.yield_cell == point
 
     def _clear_expired_yield(self) -> None:
+        """Clears an expired yield commitment."""
         if self.yielding_to is not None and time.monotonic() >= self.yield_until:
             self.yielding_to = None
             self.yield_cell = None
@@ -1083,6 +1140,7 @@ class RobotAgent(BaseAgent):
         task: Optional[WarehouseTask] = None,
         after_pickup: bool = False,
     ) -> bool:
+        """Attempts a safe side-step around a blocked cell."""
         if not self._should_side_step(blocked_cell):
             return False
         side_step = self._choose_side_step(blocked_cell)
@@ -1106,6 +1164,7 @@ class RobotAgent(BaseAgent):
         return True
 
     def _should_side_step(self, blocked_cell: Point) -> bool:
+        """Checks whether repeated blocking allows a side-step."""
         if self.blocked_attempts.get(blocked_cell, 0) >= self.side_step_threshold:
             return True
         return any(
@@ -1114,6 +1173,7 @@ class RobotAgent(BaseAgent):
         )
 
     def _choose_side_step(self, blocked_cell: Point) -> Optional[Point]:
+        """Chooses the side step."""
         occupied = set(self._dynamic_blocks())
         requested = {
             requested
@@ -1145,6 +1205,7 @@ class RobotAgent(BaseAgent):
         target: Point,
         avoid_peers: bool = True,
     ) -> Optional[List[Point]]:
+        """Finds a path to a target cell."""
         blocked = self._dynamic_blocks() if avoid_peers else []
         if avoid_peers and target in blocked and not self.world.is_service_cell(target):
             return None
@@ -1158,6 +1219,7 @@ class RobotAgent(BaseAgent):
         task: WarehouseTask,
         start: Optional[Point] = None,
     ) -> Optional[List[Point]]:
+        """Builds the full route for a task."""
         pickup_access, to_pickup = self._best_path_to_any(
             self.world.access_points_for(task.pickup),
             avoid_peers=False,
@@ -1176,6 +1238,7 @@ class RobotAgent(BaseAgent):
         avoid_peers: bool,
         start: Optional[Point] = None,
     ) -> Tuple[Optional[Point], Optional[List[Point]]]:
+        """Finds the shortest path to any target."""
         origin = start or self.position
         candidates: List[Tuple[int, int, int, Point, List[Point]]] = []
         for target in targets:
@@ -1188,6 +1251,7 @@ class RobotAgent(BaseAgent):
         return target, path
 
     def _has_delivery_energy(self, dropoff: Point) -> bool:
+        """Checks whether delivery energy."""
         to_dropoff = self._path_to(self.position, dropoff, avoid_peers=False)
         if to_dropoff is None:
             return False
@@ -1207,6 +1271,7 @@ class RobotAgent(BaseAgent):
         )
 
     async def _fail_task(self, task: WarehouseTask, reason: str) -> None:
+        """Reports task failure and frees the robot."""
         self.busy = False
         self.current_task_id = None
         await self.send(
@@ -1221,6 +1286,7 @@ class RobotAgent(BaseAgent):
         await self.publish_status("idle")
 
     def _dynamic_blocks(self) -> List[Point]:
+        """Returns peer positions that block movement."""
         return [
             position
             for position in self.peer_positions.values()
@@ -1228,16 +1294,19 @@ class RobotAgent(BaseAgent):
         ]
 
     def _handle_peer_status(self, status: RobotStatus) -> None:
+        """Handles the peer status message."""
         if not isinstance(status, RobotStatus) or status.robot_id == self.agent_id:
             return
         self.peer_positions[status.robot_id] = status.position
 
     def _handle_peer_stuck(self, report: RobotStuck) -> None:
+        """Handles the peer stuck message."""
         if not isinstance(report, RobotStuck) or report.robot_id == self.agent_id:
             return
         self.peer_positions[report.robot_id] = report.position
 
     def _handle_cell_request(self, request: CellRequest, created_at: float) -> None:
+        """Handles the cell request message."""
         if not isinstance(request, CellRequest) or request.robot_id == self.agent_id:
             return
         self.peer_intents[request.robot_id] = (
@@ -1248,6 +1317,7 @@ class RobotAgent(BaseAgent):
         )
 
     def _prune_peer_intents(self) -> None:
+        """Removes stale peer movement intents."""
         cutoff = time.monotonic() - max(self.step_delay * 4, 0.4)
         self.peer_intents = {
             robot_id: intent
@@ -1256,6 +1326,7 @@ class RobotAgent(BaseAgent):
         }
 
     async def publish_status(self, mode: str) -> None:
+        """Publishes the current robot status."""
         await self.broadcast(
             ROBOT_STATUS,
             RobotStatus(
@@ -1267,6 +1338,7 @@ class RobotAgent(BaseAgent):
         )
 
     async def _become_stuck(self, reason: str) -> None:
+        """Marks the robot as stuck and reports it."""
         self.stuck = True
         self.busy = False
         self.charging = False
@@ -1285,18 +1357,21 @@ class RobotAgent(BaseAgent):
 
 
 class ChargingStationAgent(BaseAgent):
+    """Manages charger allocation for robots."""
     def __init__(
         self,
         bus: MessageBus,
         stations: List[Point],
         clock: Optional[SimulationClock] = None,
     ) -> None:
+        """Initializes the instance."""
         super().__init__("ChargingStationAgent", bus, clock=clock)
         self.stations = stations
         self.occupied: Dict[str, Point] = {}
         self.waiting: Deque[ChargeRequest] = deque()
 
     async def run(self) -> None:
+        """Runs the main loop."""
         while self.running and self.inbox is not None:
             message = await self.inbox.get()
             if message.topic == CHARGE_REQUESTED:
@@ -1307,6 +1382,7 @@ class ChargingStationAgent(BaseAgent):
                 await self._handle_robot_stuck(message.payload)
 
     async def _handle_charge_request(self, request: ChargeRequest) -> None:
+        """Handles the charge request message."""
         station = self._nearest_free_station(request.position)
         if station is None:
             self.waiting.append(request)
@@ -1325,10 +1401,12 @@ class ChargingStationAgent(BaseAgent):
         await self._grant_station(request.robot_id, station)
 
     async def _handle_charge_finished(self, report: ChargeFinished) -> None:
+        """Handles the charge finished message."""
         self.occupied.pop(report.robot_id, None)
         await self._grant_next_waiting()
 
     async def _handle_robot_stuck(self, report: RobotStuck) -> None:
+        """Handles the robot stuck message."""
         if not isinstance(report, RobotStuck):
             return
         self.occupied.pop(report.robot_id, None)
@@ -1338,6 +1416,7 @@ class ChargingStationAgent(BaseAgent):
         await self._grant_next_waiting()
 
     async def _grant_next_waiting(self) -> None:
+        """Grants the next waiting."""
         while self.waiting:
             request = self.waiting.popleft()
             station = self._nearest_free_station(request.position)
@@ -1348,6 +1427,7 @@ class ChargingStationAgent(BaseAgent):
             return
 
     async def _grant_station(self, robot_id: str, station: Point) -> None:
+        """Grants the station."""
         self.occupied[robot_id] = station
         await self.send(
             robot_id,
@@ -1361,6 +1441,7 @@ class ChargingStationAgent(BaseAgent):
         )
 
     def _nearest_free_station(self, position: Point) -> Optional[Point]:
+        """Finds the nearest available charging station."""
         busy_stations = set(self.occupied.values())
         free = [station for station in self.stations if station not in busy_stations]
         if not free:

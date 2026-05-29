@@ -13,6 +13,7 @@ from .world import WarehouseWorld
 
 @dataclass
 class Simulation:
+    """Groups the world, bus, agents, and shared clock."""
     world: WarehouseWorld
     bus: MessageBus
     order_agent: OrderAgent
@@ -40,6 +41,7 @@ def build_simulation(
         Sequence[Callable[[MessageBus, WarehouseWorld, SimulationClock], BaseAgent]]
     ] = None,
 ) -> Simulation:
+    """Builds the demo simulation and agents."""
     world = WarehouseWorld.demo()
     bus = MessageBus()
     clock = SimulationClock(time_scale)

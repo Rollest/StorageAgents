@@ -14,6 +14,7 @@ CONFLICT_ACTIONS = (CONFLICT_ACTION_WAIT, CONFLICT_ACTION_SIDE_STEP)
 
 @dataclass(frozen=True)
 class ConflictLearningState:
+    """Stores a discretized conflict state for learning."""
     battery_bucket: str
     mode_bucket: str
     peer_priority_bucket: str
@@ -22,6 +23,7 @@ class ConflictLearningState:
     side_step_available: bool
 
     def key(self) -> str:
+        """Returns the stable state key."""
         return "|".join(
             (
                 f"battery={self.battery_bucket}",
@@ -35,6 +37,7 @@ class ConflictLearningState:
 
 
 class ConflictStateEncoder:
+    """Converts conflict facts into learning states."""
     def encode(
         self,
         *,
@@ -45,6 +48,7 @@ class ConflictStateEncoder:
         blocked_attempts: int,
         side_step_available: bool,
     ) -> ConflictLearningState:
+        """Encodes conflict inputs into buckets."""
         return ConflictLearningState(
             battery_bucket=self._battery_bucket(battery),
             mode_bucket=self._mode_bucket(mode),
@@ -55,6 +59,7 @@ class ConflictStateEncoder:
         )
 
     def _battery_bucket(self, battery: float) -> str:
+        """Returns the battery bucket."""
         if battery < 25:
             return "critical"
         if battery < 45:
@@ -64,6 +69,7 @@ class ConflictStateEncoder:
         return "high"
 
     def _mode_bucket(self, mode: str) -> str:
+        """Returns the mode bucket."""
         lowered = mode.lower()
         if "charger" in lowered or "charging" in lowered:
             return "charging"
@@ -76,6 +82,7 @@ class ConflictStateEncoder:
         return "idle"
 
     def _priority_bucket(self, priority: float) -> str:
+        """Returns the priority bucket."""
         if priority < 2:
             return "low"
         if priority < 5:
@@ -83,6 +90,7 @@ class ConflictStateEncoder:
         return "high"
 
     def _blocked_bucket(self, attempts: int) -> str:
+        """Returns the blocked-attempts bucket."""
         if attempts <= 1:
             return "fresh"
         if attempts <= 3:
@@ -91,6 +99,7 @@ class ConflictStateEncoder:
 
 
 class ConflictQPolicy:
+    """Stores and updates the Q-learning conflict policy."""
     def __init__(
         self,
         path: Optional[Path] = None,
@@ -102,6 +111,7 @@ class ConflictQPolicy:
         seed: int = 7,
         save_every: int = 20,
     ) -> None:
+        """Initializes the instance."""
         self.path = path
         self.enabled = enabled
         self.alpha = alpha
@@ -120,6 +130,7 @@ class ConflictQPolicy:
         *,
         allowed_actions: tuple[str, ...] = CONFLICT_ACTIONS,
     ) -> str:
+        """Chooses a conflict action."""
         if not self.enabled or not allowed_actions:
             return self._default_action(state, allowed_actions)
         values = self._values_for(state)
@@ -139,6 +150,7 @@ class ConflictQPolicy:
         reward: float,
         next_state: Optional[ConflictLearningState] = None,
     ) -> None:
+        """Updates the learned action value."""
         if not self.enabled or action not in CONFLICT_ACTIONS:
             return
         values = self._values_for(state)
@@ -153,6 +165,7 @@ class ConflictQPolicy:
             self.save()
 
     def load(self) -> None:
+        """Loads policy values from disk."""
         if self.path is None or not self.path.exists():
             return
         payload = json.loads(self.path.read_text(encoding="utf-8"))
@@ -169,6 +182,7 @@ class ConflictQPolicy:
             }
 
     def save(self) -> None:
+        """Saves policy values to disk."""
         if self.path is None:
             return
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -185,6 +199,7 @@ class ConflictQPolicy:
         )
 
     def _values_for(self, state: ConflictLearningState) -> Dict[str, float]:
+        """Returns Q-values for a state."""
         return self.q.setdefault(
             state.key(),
             {action: 0.0 for action in CONFLICT_ACTIONS},
@@ -195,6 +210,7 @@ class ConflictQPolicy:
         state: ConflictLearningState,
         allowed_actions: tuple[str, ...],
     ) -> str:
+        """Returns the rule-based fallback action."""
         if state.side_step_available and state.blocked_bucket == "stuck":
             return CONFLICT_ACTION_SIDE_STEP
         if CONFLICT_ACTION_WAIT in allowed_actions:
@@ -203,4 +219,5 @@ class ConflictQPolicy:
 
 
 def point_key(point: Point) -> str:
+    """Returns a compact point key."""
     return f"{point.x}:{point.y}"

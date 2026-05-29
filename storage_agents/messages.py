@@ -24,17 +24,21 @@ CHARGE_FINISHED = "charge.finished"
 
 @dataclass(frozen=True)
 class Point:
+    """Represents a grid coordinate."""
     x: int
     y: int
 
     @property
     def label(self) -> str:
+        """Returns the display label."""
         return f"{chr(ord('A') + self.x)}{self.y + 1}"
 
     def distance_to(self, other: "Point") -> int:
+        """Returns Manhattan distance to another point."""
         return abs(self.x - other.x) + abs(self.y - other.y)
 
     def step_towards(self, target: "Point") -> "Point":
+        """Returns one grid step toward a target."""
         if self.x < target.x:
             return Point(self.x + 1, self.y)
         if self.x > target.x:
@@ -48,6 +52,7 @@ class Point:
 
 @dataclass(frozen=True)
 class Envelope:
+    """Wraps a message sent through the bus."""
     sender: str
     topic: str
     payload: Any
@@ -57,6 +62,7 @@ class Envelope:
 
 @dataclass(frozen=True)
 class WarehouseTask:
+    """Represents a pickup and delivery task."""
     order_id: str
     pickup: Point
     dropoff: Point
@@ -65,11 +71,13 @@ class WarehouseTask:
 
     @property
     def label(self) -> str:
+        """Returns the display label."""
         return f"{self.order_id}: {self.pickup.label} -> {self.dropoff.label}"
 
 
 @dataclass(frozen=True)
 class Bid:
+    """Represents a robot bid for an order."""
     order_id: str
     robot_id: str
     eta_seconds: float
@@ -80,18 +88,21 @@ class Bid:
 
 @dataclass(frozen=True)
 class TaskAssignment:
+    """Assigns an order to a robot."""
     task: WarehouseTask
     bid: Bid
 
 
 @dataclass(frozen=True)
 class TaskAccepted:
+    """Reports that a robot accepted an order."""
     order_id: str
     robot_id: str
 
 
 @dataclass(frozen=True)
 class TaskRejected:
+    """Reports that a robot rejected an order."""
     order_id: str
     robot_id: str
     reason: str
@@ -99,12 +110,14 @@ class TaskRejected:
 
 @dataclass(frozen=True)
 class TaskStarted:
+    """Reports that a robot started an order."""
     order_id: str
     robot_id: str
 
 
 @dataclass(frozen=True)
 class TaskCompleted:
+    """Reports that a robot completed an order."""
     order_id: str
     robot_id: str
     battery_left: float
@@ -112,6 +125,7 @@ class TaskCompleted:
 
 @dataclass(frozen=True)
 class TaskFailed:
+    """Reports that an order failed."""
     order_id: str
     robot_id: str
     reason: str
@@ -119,6 +133,7 @@ class TaskFailed:
 
 @dataclass(frozen=True)
 class RobotStatus:
+    """Reports a robot position and mode."""
     robot_id: str
     position: Point
     battery: float
@@ -127,6 +142,7 @@ class RobotStatus:
 
 @dataclass(frozen=True)
 class RobotStuck:
+    """Reports that a robot cannot continue."""
     robot_id: str
     position: Point
     battery: float
@@ -135,6 +151,7 @@ class RobotStuck:
 
 @dataclass(frozen=True)
 class RobotPathPlanned:
+    """Reports the current planned robot path."""
     robot_id: str
     target: Point
     path: tuple[Point, ...]
@@ -143,6 +160,7 @@ class RobotPathPlanned:
 
 @dataclass(frozen=True)
 class CellRequest:
+    """Announces an intended cell move."""
     robot_id: str
     current: Point
     requested: Point
@@ -152,6 +170,7 @@ class CellRequest:
 
 @dataclass(frozen=True)
 class ChargeRequest:
+    """Requests access to a charging station."""
     robot_id: str
     position: Point
     battery: float
@@ -160,6 +179,7 @@ class ChargeRequest:
 
 @dataclass(frozen=True)
 class ChargeGrant:
+    """Reports a charging station decision."""
     robot_id: str
     accepted: bool
     station: Optional[Point]
@@ -168,5 +188,6 @@ class ChargeGrant:
 
 @dataclass(frozen=True)
 class ChargeFinished:
+    """Reports that charging has finished."""
     robot_id: str
     station: Point

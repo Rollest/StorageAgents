@@ -12,6 +12,7 @@ from .simulation import Simulation, build_simulation
 
 @dataclass(frozen=True)
 class BenchmarkConfig:
+    """Stores benchmark input parameters."""
     seeds: Sequence[int]
     duration: float
     orders: int
@@ -25,6 +26,7 @@ class BenchmarkConfig:
 
 @dataclass(frozen=True)
 class BenchmarkResult:
+    """Stores one benchmark run result."""
     mode: str
     seed: int
     completed: int
@@ -41,6 +43,7 @@ class BenchmarkResult:
 
     @property
     def completion_rate(self) -> float:
+        """Returns the completed order ratio."""
         if self.total_orders == 0:
             return 0.0
         return self.completed / self.total_orders
@@ -48,6 +51,7 @@ class BenchmarkResult:
 
 @dataclass(frozen=True)
 class BenchmarkSummary:
+    """Stores averaged benchmark metrics."""
     mode: str
     runs: int
     completed: float
@@ -63,6 +67,7 @@ class BenchmarkSummary:
 
 
 async def run_benchmark(config: BenchmarkConfig) -> List[BenchmarkResult]:
+    """Runs all benchmark modes."""
     learning_root = Path(config.learning_dir)
     if learning_root.exists():
         shutil.rmtree(learning_root)
@@ -106,6 +111,7 @@ async def run_benchmark(config: BenchmarkConfig) -> List[BenchmarkResult]:
 
 
 def summarize_results(results: Iterable[BenchmarkResult]) -> List[BenchmarkSummary]:
+    """Averages benchmark results by mode."""
     grouped: dict[str, List[BenchmarkResult]] = {}
     for result in results:
         grouped.setdefault(result.mode, []).append(result)
@@ -129,6 +135,7 @@ def summarize_results(results: Iterable[BenchmarkResult]) -> List[BenchmarkSumma
 
 
 def format_summary_table(summaries: Sequence[BenchmarkSummary]) -> str:
+    """Formats benchmark summaries as a table."""
     headers = (
         "mode",
         "runs",
@@ -172,6 +179,7 @@ def format_summary_table(summaries: Sequence[BenchmarkSummary]) -> str:
 
 
 def write_results_json(path: Path, results: Sequence[BenchmarkResult]) -> None:
+    """Writes benchmark results to JSON."""
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = [asdict(result) for result in results]
     path.write_text(
@@ -189,6 +197,7 @@ async def _run_once(
     metrics_enabled: bool,
     learning_dir: Path | None,
 ) -> BenchmarkResult:
+    """Runs one benchmark scenario."""
     if learning_dir is None:
         temp_context = tempfile.TemporaryDirectory()
         run_learning_dir = Path(temp_context.name)
@@ -235,6 +244,7 @@ async def _run_once(
 
 
 async def _run_headless(simulation: Simulation, duration: float) -> None:
+    """Runs a simulation without rendering."""
     for agent in simulation.agents:
         await agent.start()
     try:
@@ -245,6 +255,7 @@ async def _run_headless(simulation: Simulation, duration: float) -> None:
 
 
 def _read_learning_metrics(path: Path) -> dict[str, int]:
+    """Reads the learning metrics."""
     totals = {
         "conflicts": 0,
         "side_steps": 0,
@@ -274,11 +285,13 @@ def _read_learning_metrics(path: Path) -> dict[str, int]:
 
 
 def _avg(values: Iterable[float]) -> float:
+    """Returns the average of values."""
     items = list(values)
     return sum(items) / len(items) if items else 0.0
 
 
 def parse_benchmark_args() -> argparse.Namespace:
+    """Parses benchmark CLI arguments."""
     parser = argparse.ArgumentParser(
         description="Compare baseline vs learning conflict policies."
     )
@@ -296,6 +309,7 @@ def parse_benchmark_args() -> argparse.Namespace:
 
 
 def config_from_args(args: argparse.Namespace) -> BenchmarkConfig:
+    """Builds benchmark configuration from CLI arguments."""
     return BenchmarkConfig(
         seeds=args.seeds,
         duration=args.duration,

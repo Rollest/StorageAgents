@@ -57,4 +57,5 @@ def plan_path(
 
 
 def path_energy(path: Iterable[Point], energy_per_step: float) -> float:
+    """Returns the energy required for a path."""
     return len(list(path)) * energy_per_step

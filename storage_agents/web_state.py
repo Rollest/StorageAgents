@@ -56,6 +56,7 @@ class WebStateAgent(BaseAgent):
         max_events: int = 80,
         clock: Optional[SimulationClock] = None,
     ) -> None:
+        """Initializes the instance."""
         super().__init__("WebStateAgent", bus, observe_all=True, clock=clock)
         self.world = world
         self.started_at = self.clock.elapsed()
@@ -67,11 +68,13 @@ class WebStateAgent(BaseAgent):
         self._events: Deque[Dict[str, object]] = deque(maxlen=max_events)
 
     async def run(self) -> None:
+        """Runs the main loop."""
         while self.running and self.inbox is not None:
             message = await self.inbox.get()
             self._apply(message)
 
     def snapshot(self) -> Dict[str, object]:
+        """Returns a serializable state snapshot."""
         with self._lock:
             orders = list(self._orders.values())
             active_orders = [
@@ -149,6 +152,7 @@ class WebStateAgent(BaseAgent):
             return copy.deepcopy(snapshot)
 
     def _apply(self, event: Envelope) -> None:
+        """Applies one bus event to web state."""
         with self._lock:
             payload = event.payload
             if event.topic == TASK_ANNOUNCED and isinstance(payload, WarehouseTask):
@@ -288,6 +292,7 @@ class WebStateAgent(BaseAgent):
                 )
 
     def _drop_waiting(self, robot_id: str) -> None:
+        """Removes a robot from the charging queue."""
         self._charging_waiting = deque(
             item for item in self._charging_waiting if item != robot_id
         )
@@ -299,6 +304,7 @@ class WebStateAgent(BaseAgent):
         assigned_robot: Optional[str] = None,
         created_at: Optional[float] = None,
     ) -> Dict[str, object]:
+        """Builds a serializable order dictionary."""
         data: Dict[str, object] = {
             "id": task.order_id,
             "pickup": self._point(task.pickup),
@@ -317,13 +323,16 @@ class WebStateAgent(BaseAgent):
         key: str,
         fallback: float,
     ) -> float:
+        """Returns an event timestamp with fallback."""
         value = order.get(key, fallback)
         return float(value) if isinstance(value, (float, int)) else fallback
 
     def _point(self, point: Point) -> Dict[str, object]:
+        """Builds a serializable point dictionary."""
         return {"x": point.x, "y": point.y, "label": point.label}
 
     def _format_event(self, event: Envelope) -> str:
+        """Formats the event."""
         payload = event.payload
         if event.topic == TASK_ANNOUNCED and isinstance(payload, WarehouseTask):
             return f"OrderAgent announced {payload.order_id} at {payload.pickup.label}"

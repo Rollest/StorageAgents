@@ -48,6 +48,19 @@ class LearningPolicyTests(unittest.TestCase):
 
         self.assertEqual(policy.choose_action(state), CONFLICT_ACTION_WAIT)
 
+    def test_q_policy_uses_rule_default_for_unlearned_enabled_state(self) -> None:
+        state = ConflictLearningState(
+            battery_bucket="high",
+            mode_bucket="pickup",
+            peer_priority_bucket="medium",
+            own_priority_bucket="medium",
+            blocked_bucket="stuck",
+            side_step_available=True,
+        )
+        policy = ConflictQPolicy(enabled=True, epsilon=0.0)
+
+        self.assertEqual(policy.choose_action(state), CONFLICT_ACTION_SIDE_STEP)
+
     def test_metrics_recorder_writes_jsonl(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "metrics.jsonl"

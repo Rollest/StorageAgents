@@ -15,6 +15,7 @@ async def run_simulation(args: argparse.Namespace) -> None:
         step_delay=args.step_delay,
         max_auction_retries=args.max_auction_retries,
         learning_enabled=args.learning,
+        metrics_enabled=args.metrics,
         learning_dir=args.learning_dir,
     )
 
@@ -51,6 +52,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--step-delay", type=float, default=0.2)
     parser.add_argument("--max-auction-retries", type=int, default=3)
     parser.add_argument("--learning", action="store_true")
+    parser.add_argument("--metrics", action="store_true")
     parser.add_argument("--learning-dir", default="learning_state")
     parser.add_argument("--render-tick", type=float, default=0.25)
     parser.add_argument("--no-clear", action="store_true")

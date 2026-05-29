@@ -76,6 +76,7 @@ async def run_benchmark(config: BenchmarkConfig) -> List[BenchmarkResult]:
                 seed,
                 config,
                 learning_enabled=False,
+                metrics_enabled=True,
                 learning_dir=None,
             )
         )
@@ -86,6 +87,7 @@ async def run_benchmark(config: BenchmarkConfig) -> List[BenchmarkResult]:
                 seed,
                 config,
                 learning_enabled=True,
+                metrics_enabled=True,
                 learning_dir=learning_root,
             )
         )
@@ -96,6 +98,7 @@ async def run_benchmark(config: BenchmarkConfig) -> List[BenchmarkResult]:
                 seed,
                 config,
                 learning_enabled=True,
+                metrics_enabled=True,
                 learning_dir=learning_root,
             )
         )
@@ -183,6 +186,7 @@ async def _run_once(
     config: BenchmarkConfig,
     *,
     learning_enabled: bool,
+    metrics_enabled: bool,
     learning_dir: Path | None,
 ) -> BenchmarkResult:
     if learning_dir is None:
@@ -204,6 +208,7 @@ async def _run_once(
         step_delay=config.step_delay,
         max_auction_retries=config.max_auction_retries,
         learning_enabled=learning_enabled,
+        metrics_enabled=metrics_enabled,
         learning_dir=str(run_learning_dir),
     )
     try:

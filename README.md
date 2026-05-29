@@ -104,6 +104,7 @@ rule-based safety logic:
 ```bash
 python3 run_demo.py --learning --duration 120 --orders 200
 python3 run_web.py --learning --learning-dir learning_state
+python3 run_demo.py --metrics --learning-dir learning_state
 ```
 
 The learned right-of-way policy is stored in:
@@ -128,6 +129,9 @@ To compare learning against the rule-based baseline, run:
 ```bash
 python3 run_benchmark.py --seeds 1 2 3 --duration 30 --orders 100
 ```
+
+The benchmark runtime is approximately `duration * number_of_seeds * 3`, because
+it runs baseline, cold learning, and warm learning on the same seeds.
 
 The benchmark runs three modes on the same seeds:
 

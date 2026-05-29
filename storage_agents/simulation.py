@@ -30,6 +30,7 @@ def build_simulation(
     step_delay: float = 0.2,
     max_auction_retries: int = 3,
     learning_enabled: bool = False,
+    metrics_enabled: bool = False,
     learning_dir: str = "learning_state",
     extra_agents: Optional[Sequence[BaseAgent]] = None,
     extra_agent_factories: Optional[
@@ -60,7 +61,7 @@ def build_simulation(
     )
     metrics = (
         MetricsRecorder(learning_root / "metrics.jsonl", enabled=True)
-        if learning_enabled
+        if learning_enabled or metrics_enabled
         else NullMetricsRecorder()
     )
     robots = [

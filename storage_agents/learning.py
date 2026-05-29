@@ -98,7 +98,7 @@ class ConflictQPolicy:
         enabled: bool = False,
         alpha: float = 0.25,
         gamma: float = 0.75,
-        epsilon: float = 0.12,
+        epsilon: float = 0.03,
         seed: int = 7,
         save_every: int = 20,
     ) -> None:
@@ -122,9 +122,11 @@ class ConflictQPolicy:
     ) -> str:
         if not self.enabled or not allowed_actions:
             return self._default_action(state, allowed_actions)
+        values = self._values_for(state)
+        if all(abs(values.get(action, 0.0)) < 1e-9 for action in allowed_actions):
+            return self._default_action(state, allowed_actions)
         if self.random.random() < self.epsilon:
             return self.random.choice(allowed_actions)
-        values = self._values_for(state)
         return max(
             allowed_actions,
             key=lambda action: (values.get(action, 0.0), -allowed_actions.index(action)),

@@ -360,7 +360,8 @@ class RobotAgent(BaseAgent):
         self.intent_window = min(0.08, max(0.02, self.step_delay / 2))
 
     async def stop(self) -> None:
-        self.conflict_policy.save()
+        if self.conflict_policy.enabled:
+            self.conflict_policy.save()
         await super().stop()
 
     async def run(self) -> None:

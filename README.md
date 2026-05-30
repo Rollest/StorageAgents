@@ -1,28 +1,31 @@
 # StorageAgents
 
-Small multi-agent warehouse simulation for a 10x10 grid.
+Небольшая многоагентная симуляция складского помещения на сетке 10x10.
 
-The important design point is that there is no central scheduler. The shared
-backend component is only a message transport. Decisions live inside agents:
+Главная архитектурная идея проекта состоит в том, что в системе нет единого
+центрального диспетчера. Общий backend-компонент используется как транспорт
+сообщений, а решения принимаются внутри отдельных агентов:
 
-- `OrderAgent` creates an order and announces an auction.
-- `RobotAgent` instances independently decide whether to bid.
-- `OrderAgent` assigns its own order to the best received bid, then waits for
-  an explicit accept/reject response.
-- `RobotAgent` decides when it needs charging.
-- `ChargingStationAgent` grants or queues charging requests.
+- `OrderAgent` создает заказ и объявляет аукцион.
+- `RobotAgent` самостоятельно решает, участвовать ли в аукционе.
+- `OrderAgent` назначает свой заказ роботу с лучшей ставкой и ожидает явного
+  ответа `accept` или `reject`.
+- `RobotAgent` сам решает, когда ему нужна зарядка.
+- `ChargingStationAgent` выдает зарядную станцию или ставит запрос в очередь.
 
-This is a compact implementation of a contract-net style protocol: announce,
-bid, retry if no bids, award, accept/reject, execute, report. Task messages are immutable
-snapshots, so agents cannot silently mutate another agent's state by holding the
-same Python object reference.
+Проект реализует компактный вариант протокола Contract Net: объявление задачи,
+сбор ставок, повтор при отсутствии ставок, назначение, принятие или отказ,
+выполнение и отчет. Сообщения с задачами являются неизменяемыми снимками, чтобы
+агенты не могли незаметно менять состояние друг друга через общую ссылку на
+один Python-объект.
 
-## Why it is not a central orchestrator
+## Почему это не центральный управляющий
 
-`run_demo.py` is only a bootstrap file: it creates agents and starts their async
-loops. It does not choose robots, move robots, assign chargers, or inspect bids.
+`run_demo.py` только создает агентов и запускает их асинхронные циклы. Он не
+выбирает роботов, не перемещает их, не назначает зарядные станции и не
+анализирует ставки.
 
-The message flow is:
+Поток сообщений выглядит так:
 
 ```text
 OrderAgent -> all robots: task.announced
@@ -37,125 +40,137 @@ RobotAgent -> ChargingStationAgent: charge.requested
 ChargingStationAgent -> RobotAgent: charge.granted
 ```
 
-The message bus is intentionally simple: it stores queues and delivers
-`Envelope` objects by topic/recipient. It does not read task content and does not
-make business decisions.
+Шина сообщений намеренно устроена просто: она хранит очереди подписчиков и
+доставляет объекты `Envelope` по теме или получателю. Она не читает содержимое
+задач и не принимает бизнес-решения.
 
-## Navigation
+## Навигация
 
-Robots use A* path planning around shelf cells. A shelf is treated as an
-obstacle, so the robot drives to a neighboring access cell to pick the item.
+Роботы используют A* для построения маршрута по сетке. Полка считается
+препятствием, поэтому робот подъезжает к соседней доступной клетке, чтобы
+забрать товар.
 
-Before moving to the next cell, a robot broadcasts `cell.requested` with a local
-priority. Other robots listen to peer positions and recent cell requests. If the
-next cell is occupied or a higher-priority robot is requesting it, the robot
-waits, adds a small backoff, and replans. Priority ages upward for robots that
-have waited several times, which avoids permanently favoring the same robot ID.
-Robots also commit to a short yield window after losing a right-of-way dispute;
-this prevents two agents from repeatedly changing their routes at the same time.
-If the same conflict repeats, the yielding robot looks for a nearby free
-side-step cell to clear the lane. There is still no central navigation
-controller.
+Перед переходом в следующую клетку робот публикует `cell.requested` с локальным
+приоритетом. Остальные роботы слушают позиции соседей и последние запросы
+клеток. Если следующая клетка занята или ее запрашивает робот с более высоким
+приоритетом, робот ждет, добавляет небольшой backoff и перестраивает маршрут.
+Приоритет растет у роботов, которые несколько раз ждали, поэтому система не
+закрепляет преимущество за одним и тем же идентификатором робота.
 
-The web UI draws each robot's currently planned route with dotted lines.
-Robots estimate whether they can safely accept a task by planning the full route:
-current position to shelf access, then packaging, then the nearest charger, plus
-a reserve and traffic margin. Charging decisions use the same workload estimate
-instead of a fixed "below 40%" rule. While moving, a robot also re-checks the
-remaining task route before each step; if a detour or traffic conflict would
-make the reserve unsafe, it rejects the task back to the auction and goes to
-charge instead of driving itself empty.
+После проигрыша в споре за право проезда робот фиксирует короткое окно
+уступания. Это снижает вероятность ситуации, когда два агента одновременно
+меняют маршруты и входят в цикл. Если один и тот же конфликт повторяется,
+уступающий робот ищет ближайшую безопасную side-step клетку, чтобы освободить
+проход. При этом центрального контроллера движения все равно нет.
 
-The UI separates completed, waiting, expired, and failed orders and shows current
-robot utilization plus average completion time.
+Веб-интерфейс показывает текущие маршруты роботов пунктирными линиями.
 
-## Run
+## Заряд и безопасность задач
+
+Робот оценивает возможность взять заказ не по простому правилу вроде
+`battery > 40%`, а по полному маршруту:
+
+- от текущей позиции до доступа к полке;
+- от полки до упаковочной зоны;
+- от упаковочной зоны до ближайшей зарядной станции;
+- плюс резерв и запас на транспортные конфликты.
+
+Во время движения робот повторно проверяет оставшуюся задачу перед каждым
+шагом. Если обход или конфликт делают энергетический резерв небезопасным, робот
+отклоняет задачу обратно в аукцион и едет заряжаться вместо того, чтобы
+разрядиться в процессе выполнения.
+
+В интерфейсе отдельно отображаются завершенные, ожидающие, истекшие и
+проваленные заказы, занятость роботов и среднее время выполнения задачи.
+
+## Запуск
+
+Консольная симуляция:
 
 ```bash
-python3 run_demo.py
+python run_demo.py
 ```
 
-Web visualization:
+Веб-визуализация:
 
 ```bash
-python3 run_web.py
+python run_web.py
 ```
 
-Then open:
+После запуска нужно открыть:
 
 ```text
 http://127.0.0.1:8000
 ```
 
-Useful options:
+Полезные параметры:
 
 ```bash
-python3 run_demo.py --duration 45 --robots 4 --orders 20
-python3 run_demo.py --duration 8 --no-clear
-python3 run_web.py --port 8765 --robots 4 --orders 100 --max-auction-retries 3
-python3 run_web.py --learning --learning-dir learning_state --time-scale 1.5
+python run_demo.py --duration 45 --robots 4 --orders 20
+python run_demo.py --duration 8 --no-clear
+python run_web.py --port 8765 --robots 4 --orders 100 --max-auction-retries 3
+python run_web.py --learning --learning-dir learning_state --time-scale 1.5
 ```
 
-The web UI has a speed slider that changes the shared simulation clock at
-runtime. It affects order creation, auction windows, robot movement, charging,
-and conflict waiting without restarting the simulation.
+В веб-интерфейсе есть ползунок скорости времени. Он меняет общий таймер
+симуляции во время работы и влияет на генерацию заказов, окно аукциона,
+движение роботов, зарядку и ожидание при конфликтах без перезапуска программы.
 
-## Learning mode
+## Режим обучения
 
-Conflict resolution can run with a small Q-learning policy layered on top of the
-rule-based safety logic:
+Разрешение конфликтов может работать с небольшой Q-learning политикой,
+наложенной поверх правил безопасности:
 
 ```bash
-python3 run_demo.py --learning --duration 120 --orders 200
-python3 run_web.py --learning --learning-dir learning_state
-python3 run_demo.py --metrics --learning-dir learning_state
+python run_demo.py --learning --duration 120 --orders 200
+python run_web.py --learning --learning-dir learning_state
+python run_demo.py --metrics --learning-dir learning_state
 ```
 
-The learned right-of-way policy is stored in:
+Выученная политика right-of-way сохраняется в файл:
 
 ```text
 learning_state/conflict_policy.json
 ```
 
-Conflict metrics are appended as JSONL events:
+Метрики конфликтов дописываются как JSONL-события:
 
 ```text
 learning_state/metrics.jsonl
 ```
 
-The learning layer only chooses between local conflict actions such as waiting
-or taking a side-step. It does not bypass battery, reachability, or task safety
-checks. Rewards include conflict resolution, repeated blocking, side-step cost,
-and low-battery risk, so the policy is pushed toward actions that clear traffic
-without wasting energy.
+Слой обучения выбирает только локальное действие в конфликте, например ожидание
+или безопасный side-step. Он не обходит проверки батареи, достижимости и
+безопасности задачи. Награда учитывает разрешение конфликта, повторные
+блокировки, стоимость side-step и риск низкого заряда, поэтому политика
+обучается освобождать проходы без лишней траты энергии.
 
-To compare learning against the rule-based baseline, run:
+## Бенчмарк
+
+Для сравнения обучения с rule-based baseline:
 
 ```bash
-python3 run_benchmark.py --seeds 1 2 3 --duration 30 --orders 100
+python run_benchmark.py --seeds 1 2 3 --duration 30 --orders 100
 ```
 
-The benchmark runtime is approximately `duration * number_of_seeds * 3`, because
-it runs baseline, cold learning, and warm learning on the same seeds.
-
-The benchmark runs three modes on the same seeds:
+Время работы бенчмарка примерно равно
+`duration * number_of_seeds * 3`, потому что он запускает три режима на одних и
+тех же seed-ах:
 
 ```text
-baseline       rule-based conflict handling
-learning_cold  learning enabled with an empty policy
-learning_warm  learning enabled again with the policy from learning_cold
+baseline       правила без обучения
+learning_cold  обучение с пустой политикой
+learning_warm  повторный запуск с политикой после learning_cold
 ```
 
-Use `--json-out benchmark_results.json` for detailed per-run results.
-
-## Tests
+Для сохранения подробных результатов можно использовать:
 
 ```bash
-python3 -B -m unittest discover -s tests
+python run_benchmark.py --json-out benchmark_results.json
 ```
 
-## Defense phrase
+## Тесты
 
-"The single backend component is used only as message transport. The decision
-logic is distributed: each agent owns its state, makes local decisions, and
-communicates with other agents through asynchronous queues."
+```bash
+python -B -m unittest discover -s tests
+```
